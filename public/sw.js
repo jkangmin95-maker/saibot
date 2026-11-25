@@ -1,4 +1,4 @@
-const CACHE_NAME = 'urisai-pwa-v2';
+const CACHE_NAME = 'urisai-pwa-v3';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -22,6 +22,12 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(event.request)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(event.request))
   );
 });

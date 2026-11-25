@@ -20,6 +20,11 @@
       color: #2D3436;
       font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Inter", sans-serif;
       overscroll-behavior-y: none;
+      height: 100%;
+      height: 100dvh;
+      max-height: 100dvh;
+      margin: 0;
+      overflow: hidden;
     }
     .safe-top { padding-top: max(14px, env(safe-area-inset-top)); }
     .safe-bottom { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
@@ -34,12 +39,12 @@
 </head>
 <body class="min-h-screen flex justify-center bg-[#F4ECE6]">
   <!-- 모바일 앱 컨테이너 (폰에서는 전체 화면, 데스크톱에서는 깔끔한 모바일 뷰포트) -->
-  <div id="app" class="w-full max-w-[440px] min-h-screen bg-[#FFF9F5] shadow-[0_0_40px_rgba(45,52,54,0.08)] flex flex-col relative overflow-x-hidden">
+  <div id="app" class="w-full max-w-[440px] h-[100dvh] max-h-[100dvh] bg-[#FFF9F5] shadow-[0_0_40px_rgba(45,52,54,0.08)] flex flex-col relative overflow-hidden">
     <!-- JS가 마운트 -->
   </div>
 
   <!-- 토스트 컨테이너 -->
-  <div id="toast" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 hidden max-w-[380px] w-[90%] bg-[#2D3436] text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl text-center"></div>
+  <div id="toast" class="fixed left-1/2 -translate-x-1/2 z-[60] hidden max-w-[380px] w-[90%] bg-[#2D3436] text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl text-center" style="top: max(4.75rem, calc(env(safe-area-inset-top) + 3.75rem))"></div>
 
   <script>
     (function () {
@@ -70,8 +75,10 @@
           tagName: '스마트폰 집중',
           empathy: '함께 있는 소중한 시간인데 나보다 화면을 더 오래 보는 것 같으면 당연히 마음이 헛헛하고 속상하죠. 그 서운함, 제가 조용히 안아드릴게요. 상대방이 전혀 눈치채지 못하게 오늘 밤 눈 맞추는 시간을 자연스럽게 만들어 볼까요?',
           drafts: [
-            { title: '디지털 디톡스 15분 챌린지', badge: '오늘의 데일리 미션', message: "오늘 밤 두 분만의 '디지털 디톡스 15분' 어때요? 폰은 잠시 뒤집어 두고, 서로 눈 맞추며 오늘 가장 웃겼던 일 하나씩만 이야기해 보세요!" },
-            { title: '식사 시간 눈맞춤 타임', badge: '커플 추천 팁', message: '다음에 같이 밥 먹을 땐 두 분 다 폰을 가방 속에 쏙 넣어두고, 서로의 표정을 보며 천천히 대화해 보는 건 어떨까요?' }
+            { title: '식사 시간 눈맞춤 타임', badge: '오늘의 데일리 미션', message: '다음에 같이 밥 먹을 땐 두 분 다 폰을 가방 속에 쏙 넣어두고, 서로의 표정을 보며 천천히 대화해 보는 건 어떨까요?' },
+            { title: '함께 걷는 10분 산책', badge: '커플 추천 팁', message: '오늘 저녁, 잠깐이라도 같이 걸어볼까요? 폰은 주머니에 두고 손 잡고 오늘 있었던 일만 이야기해 보세요.' },
+            { title: '화면 대신 눈 맞추기', badge: '오늘의 데일리 미션', message: '집에 도착하면 먼저 폰을 내려놓고, 상대방 얼굴을 보며 "오늘 하루 어땠어?" 하고 물어봐 주세요.' },
+            { title: '같은 영상 같이 보기', badge: '다정함 리마인더', message: '각자 폰을 보기보다, 한 화면으로 재밌는 영상 하나를 골라 나란히 앉아 같이 웃어보는 건 어때요?' }
           ]
         },
         contact: {
@@ -79,7 +86,9 @@
           empathy: '기다리는 시간은 실제보다 훨씬 길게 느껴지잖아요. 바쁠 거라 이해하려 해도 막상 연락이 뜸하면 마음이 작아질 수밖에 없어요. 부담 주지 않으면서도 반가운 연락이 먼저 오도록 살짝 신호를 띄워볼게요.',
           drafts: [
             { title: '하늘 사진 한 장 & 짧은 안부', badge: '오늘의 데일리 미션', message: '바쁜 하루 중 딱 10초! 지금 보이는 풍경이나 마시는 커피 사진 한 장과 함께 "지금 문득 네 생각났어"라고 먼저 톡 보내보는 건 어때요?' },
-            { title: '퇴근 전 1분 목소리 선물', badge: '커플 추천 팁', message: '메시지 대신 오늘 저녁엔 짧은 음성 메시지나 1분 통화로 "오늘 하루 어땠어?" 하고 다정하게 안부를 물어봐 주세요!' }
+            { title: '퇴근 전 1분 목소리 선물', badge: '커플 추천 팁', message: '메시지 대신 오늘 저녁엔 짧은 음성 메시지나 1분 통화로 "오늘 하루 어땠어?" 하고 다정하게 안부를 물어봐 주세요!' },
+            { title: '점심때 짧은 응원 톡', badge: '오늘의 데일리 미션', message: '점심시간에 "맛있는 거 먹고 힘내!" 한 줄만 먼저 보내보세요. 짧아도 기다리는 사람에겐 큰 힘이 돼요.' },
+            { title: '잠들기 전 잘 자요 인사', badge: '다정함 리마인더', message: '오늘이 끝나기 전에 "오늘도 수고했어, 잘 자"라는 인사를 먼저 건네 보세요.' }
           ]
         },
         affection: {
@@ -87,7 +96,9 @@
           empathy: '마음이야 알지만 가끔은 말과 행동으로 확인받고 싶을 때가 있잖아요. 상대방이 오늘 자연스럽게 애정을 듬뿍 표현할 수 있는 따뜻한 미션을 보내볼게요.',
           drafts: [
             { title: '오늘의 진심 한 문장 전하기', badge: '오늘의 데일리 미션', message: '익숙함에 잠시 아껴두었던 말, 오늘은 꼭 꺼내볼까요? 상대방의 좋은 점 한 가지를 콕 집어 "난 너의 이런 점이 참 좋아"라고 말해 주세요!' },
-            { title: '말없이 5초 꼭 안아주기', badge: '커플 추천 팁', message: '오늘 만나면 아무 말 없이 5초만 꽉 안아주는 건 어때요? 백 마디 말보다 따뜻한 포옹 한 번이 마음을 가장 빠르게 채워준대요.' }
+            { title: '말없이 5초 꼭 안아주기', badge: '커플 추천 팁', message: '오늘 만나면 아무 말 없이 5초만 꽉 안아주는 건 어때요? 백 마디 말보다 따뜻한 포옹 한 번이 마음을 가장 빠르게 채워준대요.' },
+            { title: '칭찬 한 스푼 더하기', badge: '오늘의 데일리 미션', message: '오늘 상대방의 옷이나 표정, 작은 배려 하나를 발견하고 "그게 정말 좋더라"고 구체적으로 칭찬해 보세요.' },
+            { title: '손편지 같은 긴 톡', badge: '다정함 리마인더', message: '이모티콘 대신, 요즘 고마웠던 일을 세 문장으로 풀어 적어 보내보세요. 마음이 그대로 전해질 거예요.' }
           ]
         },
         date: {
@@ -95,7 +106,9 @@
           empathy: '매번 먼저 고민하고 준비하다 보면 나만 애쓰는 기분이 들기 마련이에요. 이번엔 상대방이 설레는 마음으로 먼저 데이트 아이디어를 꺼낼 수 있게 슬쩍 영감을 불어넣어 줄게요!',
           drafts: [
             { title: '이번 주말 비밀 코스 제안하기', badge: '데이트 추천 미션', message: '이번 데이트는 내가 먼저 깜짝 제안 어때요? 가보고 싶었던 맛집이나 예쁜 카페 2곳을 골라 "우리 여기 갈까?" 하고 먼저 물어봐 주세요!' },
-            { title: '우리만의 소확행 산책 루트', badge: '커플 추천 팁', message: '거창한 계획이 아니어도 좋아요. 이번 주엔 연인과 함께 걷고 싶은 동네나 디저트 가게를 하나 정해서 먼저 데이트 신청을 해보세요!' }
+            { title: '우리만의 소확행 산책 루트', badge: '커플 추천 팁', message: '거창한 계획이 아니어도 좋아요. 이번 주엔 연인과 함께 걷고 싶은 동네나 디저트 가게를 하나 정해서 먼저 데이트 신청을 해보세요!' },
+            { title: '집에서도 데이트 기분', badge: '오늘의 데일리 미션', message: '나가기 어렵다면 집에서 좋아하는 음식과 조명만 바꿔 작은 데이트 분위기를 만들어 보는 건 어때요?' },
+            { title: '다음 약속 먼저 잡기', badge: '다정함 리마인더', message: '다음 쉬는 날 일정을 열어보고 "그날은 우리 시간으로 남겨두자"며 먼저 약속을 잡아 보세요.' }
           ]
         },
         tone: {
@@ -103,7 +116,9 @@
           empathy: '가까운 사이라서 더 쉽게 상처받는 게 말투인 것 같아요. 상대방이 오늘 부드러운 온도로 먼저 말을 걸어올 수 있게 다정한 대화 넛지를 준비했어요.',
           drafts: [
             { title: '다정한 말끝 쿠션 미션', badge: '오늘의 데일리 미션', message: '피곤한 날일수록 말끝에 다정함을 한 스푼 더해보는 건 어때요? 오늘 대화할 땐 "고마워", "그랬구나~" 같은 따뜻한 리액션을 한 번 더 건네보세요.' },
-            { title: '오늘 고마웠던 일 하나 말하기', badge: '커플 추천 팁', message: '잠시 숨을 고르고 연인에게 "오늘 네 덕분에 힘이 났어" 혹은 "항상 내 편 되어줘서 고마워" 하고 부드럽게 먼저 말을 걸어보는 건 어떨까요?' }
+            { title: '오늘 고마웠던 일 하나 말하기', badge: '커플 추천 팁', message: '잠시 숨을 고르고 연인에게 "오늘 네 덕분에 힘이 났어" 혹은 "항상 내 편 되어줘서 고마워" 하고 부드럽게 먼저 말을 걸어보는 건 어떨까요?' },
+            { title: '먼저 사과보다 다정한 재시작', badge: '오늘의 데일리 미션', message: '조금 쌀쌀했던 공기가 있다면, "나 너랑 얘기하니까 마음이 풀려"라고 먼저 부드럽게 대화를 열어보세요.' },
+            { title: '목소리 톤 한 단계 낮추기', badge: '다정함 리마인더', message: '오늘 한 번은 일부러 느리고 부드러운 목소리로 "많이 피곤했지?" 하고 먼저 공감해 주세요.' }
           ]
         },
         default: {
@@ -111,31 +126,13 @@
           empathy: '말로 꺼내기 쉽지 않은 속마음을 솔직하게 들려줘서 고마워요. 상대방이 오늘 유난히 다정하게 다가올 수 있도록 자연스러운 미션을 만들어 드릴게요.',
           drafts: [
             { title: '오늘의 다정함 10분 티타임', badge: '오늘의 데일리 미션', message: '오늘 저녁엔 따뜻한 음료 한 잔과 함께 "요즘 혹시 힘든 일 없어?" 하고 연인의 마음을 먼저 토닥여 주는 10분을 가져보는 건 어때요?' },
-            { title: '서로의 하루를 안아주는 한마디', badge: '다정함 리마인더', message: '오늘 하루가 끝나기 전에 "오늘도 수고 많았어, 네가 있어 참 다행이야"라는 말로 따뜻한 마무리를 선물해 보세요.' }
+            { title: '서로의 하루를 안아주는 한마디', badge: '다정함 리마인더', message: '오늘 하루가 끝나기 전에 "오늘도 수고 많았어, 네가 있어 참 다행이야"라는 말로 따뜻한 마무리를 선물해 보세요.' },
+            { title: '작은 응원 스티커 선물', badge: '커플 추천 팁', message: '말없이 힘이 되는 이모티콘이나 짧은 음성 메시지로 "난 네 편이야"를 전해 보세요.' },
+            { title: '같이 듣고 싶은 노래 하나', badge: '오늘의 데일리 미션', message: '상대방이 좋아할 것 같은 노래 하나를 골라 "이거 듣다 네가 생각났어"와 함께 보내보는 건 어때요?' }
           ]
         }
       };
 
-      const BASELINE_MISSIONS = [
-        {
-          id: 'base-1',
-          targetRole: 'BOTH',
-          title: '퇴근길 깜짝 간식 서프라이즈',
-          badge: '오늘의 커플 추천 팁',
-          message: '오늘 퇴근길에 상대방이 좋아하는 간식 하나 사 가는 건 어때요? 작은 서프라이즈가 하루의 피로를 사르르 녹여줄 거예요.',
-          time: '오늘 오전 9:30',
-          accepted: false
-        },
-        {
-          id: 'base-2',
-          targetRole: 'BOTH',
-          title: '추억 사진 한 장 꺼내보기',
-          badge: '데일리 미션 카드',
-          message: '함께 찍었던 사진 중 제일 마음에 드는 한 장을 골라 "이때 진짜 좋았지!" 하고 슬쩍 보내보세요.',
-          time: '어제',
-          accepted: true
-        }
-      ];
 
       function detectCategory(text) {
         const s = text.toLowerCase();
@@ -165,11 +162,11 @@
           myName: '지수',
           partnerName: '민준',
           role: 'A', // 'A' or 'B'
-          coupleCode: 'S2-4829',
+          coupleCode: randomCoupleCode(),
           activeTab: 'saibot', // 'missions' | 'saibot' | 'warmth'
           warmthTemp: 37.5,
-          completedCount: 2,
-          missions: BASELINE_MISSIONS.slice(),
+          completedCount: 0,
+          missions: [],
           chats: {
             A: [
               { id: 'w-a', sender: 'bot', type: 'welcome', text: '안녕! 오늘 연인에게 서운했거나 아쉬웠던 점을 솔직하게 털어놓아 주세요. (상대방에겐 절대 그대로 전달되지 않아요 🤫)', time: '방금 전' }
@@ -209,6 +206,7 @@
 
       let state = loadState();
       let syncTimer = null;
+      let sendingEmotion = false;
 
       function saveState() {
         try {
@@ -253,26 +251,63 @@
         }
       }
 
+      function isUserTyping() {
+        const el = document.activeElement;
+        return el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT');
+      }
+
+      function mergeRemoteMissions(rows) {
+        const remote = (rows || []).map((r) => ({
+          id: r.id,
+          targetRole: r.target_role,
+          title: r.title,
+          badge: r.badge,
+          message: r.message,
+          time: '도착함',
+          accepted: Boolean(r.accepted)
+        }));
+        const remoteIds = new Set(remote.map((m) => m.id));
+        const localById = {};
+        (state.missions || []).forEach((m) => { localById[m.id] = m; });
+        const merged = remote.map((r) => {
+          const local = localById[r.id];
+          return local && local.accepted && !r.accepted ? Object.assign({}, r, { accepted: true }) : r;
+        });
+        (state.missions || []).forEach((m) => {
+          if (!remoteIds.has(m.id) && String(m.id).indexOf('base-') !== 0) merged.unshift(m);
+        });
+        return merged;
+      }
+
       async function syncFromSupabase() {
         if (!state.onboarded || !state.supabaseUrl || !state.supabaseKey) return;
         const couples = await sbFetch('couples?code=eq.' + encodeURIComponent(state.coupleCode));
+        let warmthChanged = false;
         if (couples && couples.length > 0) {
-          state.warmthTemp = Number(couples[0].warmth_temp) || state.warmthTemp;
-          state.completedCount = Number(couples[0].completed_count) || state.completedCount;
-          state.syncStatus = '실시간 동기화 중';
+          const nextTemp = Number(couples[0].warmth_temp);
+          const nextCount = Number(couples[0].completed_count);
+          if (!Number.isNaN(nextTemp) && nextTemp !== state.warmthTemp) {
+            state.warmthTemp = nextTemp;
+            warmthChanged = true;
+          }
+          if (!Number.isNaN(nextCount) && nextCount !== state.completedCount) {
+            state.completedCount = nextCount;
+            warmthChanged = true;
+          }
+          if (state.syncStatus !== 'connected') state.syncStatus = 'connected';
         }
         const rows = await sbFetch('daily_missions?couple_code=eq.' + encodeURIComponent(state.coupleCode) + '&order=created_at.desc');
         if (rows && Array.isArray(rows)) {
-          const remoteMissions = rows.map((r) => ({
-            id: r.id,
-            targetRole: r.target_role,
-            title: r.title,
-            badge: r.badge,
-            message: r.message,
-            time: '도착함',
-            accepted: Boolean(r.accepted)
-          }));
-          state.missions = remoteMissions.concat(BASELINE_MISSIONS);
+          const merged = mergeRemoteMissions(rows);
+          const before = JSON.stringify((state.missions || []).map((m) => [m.id, m.accepted]));
+          const after = JSON.stringify(merged.map((m) => [m.id, m.accepted]));
+          const missionsChanged = before !== after;
+          if (missionsChanged) state.missions = merged;
+          if (missionsChanged || warmthChanged) {
+            saveState();
+            if (!isUserTyping()) render();
+          }
+        } else if (warmthChanged && !isUserTyping()) {
           saveState();
           render();
         }
@@ -335,7 +370,8 @@
             }
           } catch (_e) {}
         }
-        return { empathy: preset.empathy, drafts: preset.drafts };
+        const drafts = preset.drafts.slice();
+        return { empathy: preset.empathy, drafts: drafts, draftIdx: Math.floor(Math.random() * drafts.length) };
       }
 
       function renderOnboarding() {
@@ -373,13 +409,13 @@
               </div>
 
               <div>
-                <label class="block text-[11px] font-bold text-[#636E72] mb-1.5">내 기기 역할 선택</label>
+                <label class="block text-[11px] font-bold text-[#636E72] mb-1.5">나는 누구인가요?</label>
                 <div class="grid grid-cols-2 gap-2">
                   <button type="button" data-action="pick-role" data-role="A" class="py-2.5 rounded-xl text-xs font-bold border transition-all ${state.role === 'A' ? 'bg-[#FF8A80] text-white border-[#FF8A80] shadow-sm' : 'bg-[#FFF9F5] text-[#636E72] border-[#FF8A80]/25'}">
-                    나 (A 기기)
+                    나
                   </button>
                   <button type="button" data-action="pick-role" data-role="B" class="py-2.5 rounded-xl text-xs font-bold border transition-all ${state.role === 'B' ? 'bg-[#FFB74D] text-white border-[#FFB74D] shadow-sm' : 'bg-[#FFF9F5] text-[#636E72] border-[#FFB74D]/40'}">
-                    연인 (B 기기)
+                    연인
                   </button>
                 </div>
               </div>
@@ -424,7 +460,12 @@
               <span class="text-xs font-semibold text-[#636E72]">대기 ${pendingCount}개</span>
             </div>
 
-            ${visibleMissions.map((m) => `
+            ${visibleMissions.length === 0 ? `
+              <div class="bg-white rounded-2xl p-6 border border-[#FF8A80]/15 text-center">
+                <p class="text-sm font-bold text-[#2D3436]">아직 도착한 미션이 없어요</p>
+                <p class="text-xs text-[#9AA5A9] mt-1.5 leading-relaxed">사이봇 비밀방에서 마음을 전하면,<br />상대방에게만 따뜻한 미션으로 도착해요.</p>
+              </div>
+            ` : visibleMissions.map((m) => `
               <div class="animate-pop bg-white rounded-2xl p-4 border ${!m.accepted && m.targetRole === state.role ? 'border-[#FF8A80] ring-2 ring-[#FF8A80]/15' : 'border-[#2D3436]/8'} shadow-[0_4px_16px_rgba(45,52,54,0.05)] relative">
                 <div class="flex items-center justify-between mb-2">
                   <span class="text-[11px] font-bold text-[#FF8A80] bg-[#FFF0EE] px-2.5 py-0.5 rounded-full">${esc(m.badge)}</span>
@@ -487,7 +528,7 @@
                       </div>
                       <div class="bg-gradient-to-br from-white to-[#FFF3F0] rounded-2xl p-3.5 border border-[#FF8A80]/35 shadow-sm">
                         <div class="flex items-center justify-between mb-2">
-                          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF8A80]/15 text-[#D95B50]">✨ 시치미 뚝 뗀 넛지 초안</span>
+                          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF8A80]/15 text-[#D95B50]">✨ 오늘의 미션 제안</span>
                           ${!msg.sent ? `<button type="button" data-action="shuffle-draft" data-id="${esc(msg.id)}" class="text-[11px] font-bold text-[#636E72] hover:text-[#FF8A80]">다른 표현</button>` : ''}
                         </div>
                         <div class="bg-white rounded-xl p-3 border border-[#FF8A80]/15">
@@ -522,7 +563,7 @@
                 `).join('')}
               </div>
               <div class="flex items-end gap-2 bg-[#FFF9F5] rounded-2xl border border-[#FF8A80]/30 px-3 py-2">
-                <textarea id="emotion-input" rows="2" placeholder="서운했거나 아쉬웠던 점을 솔직하게 털어놓아 주세요..." class="flex-1 bg-transparent text-[13px] text-[#2D3436] placeholder-[#9AA5A9] focus:outline-none resize-none leading-snug">${esc(state.draftInput)}</textarea>
+                <textarea id="emotion-input" rows="2" enterkeyhint="send" placeholder="서운했거나 아쉬웠던 점을 솔직하게 털어놓아 주세요..." class="flex-1 bg-transparent text-[13px] text-[#2D3436] placeholder-[#9AA5A9] focus:outline-none resize-none leading-snug">${esc(state.draftInput)}</textarea>
                 <button type="button" data-action="send-emotion" class="w-9 h-9 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white flex items-center justify-center shrink-0 shadow-sm font-bold text-sm">
                   ↑
                 </button>
@@ -546,22 +587,11 @@
             </div>
 
             <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-[#2D3436]">현재 연결 상태</span>
-                <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#FFF0EE] text-[#E0665B]">${esc(state.syncStatus)}</span>
-              </div>
+              <p class="text-xs font-bold text-[#2D3436]">우리 커플 초대 코드</p>
+              <p class="text-[11px] text-[#9AA5A9]">연인에게 이 코드를 알려주고, 같은 코드로 입장하면 서로 연결돼요.</p>
               <div class="flex items-center justify-between text-xs">
-                <span class="text-[#636E72]">커플 초대 코드</span>
-                <div class="flex items-center gap-2">
-                  <span class="font-mono font-extrabold text-[#2D3436]">${esc(state.coupleCode)}</span>
-                  <button type="button" data-action="copy-code" class="px-2 py-1 rounded-lg bg-[#FFF9F5] border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
-                </div>
-              </div>
-              <div class="pt-2 border-t border-[#2D3436]/5 flex items-center justify-between">
-                <span class="text-xs text-[#636E72]">현재 내 기기 역할: <strong class="text-[#2D3436]">${state.role === 'A' ? state.myName + ' (A)' : state.partnerName + ' (B)'}</strong></span>
-                <button type="button" data-action="toggle-role" class="px-2.5 py-1.5 rounded-xl bg-[#2D3436] text-white text-[11px] font-bold">
-                  상대방 기기로 전환해 보기
-                </button>
+                <span class="font-mono font-extrabold text-base text-[#2D3436] tracking-wider">${esc(state.coupleCode)}</span>
+                <button type="button" data-action="copy-code" class="px-3 py-1.5 rounded-lg bg-[#FFF9F5] border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
               </div>
             </div>
 
@@ -590,26 +620,30 @@
             <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
               <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 space-y-4 shadow-2xl max-h-[88vh] overflow-y-auto">
                 <div class="flex items-center justify-between">
-                  <h3 class="text-base font-extrabold text-[#2D3436]">실시간 연동 & AI 설정</h3>
+                  <h3 class="text-base font-extrabold text-[#2D3436]">설정</h3>
                   <button type="button" data-action="close-modals" class="text-sm font-bold text-[#636E72] px-2 py-1">닫기</button>
                 </div>
-                <div class="space-y-3 text-xs">
-                  <div>
-                    <label class="block font-bold text-[#2D3436] mb-1">Supabase Project URL (2인 실시간 동기화)</label>
-                    <input id="set-sb-url" type="url" value="${esc(state.supabaseUrl)}" placeholder="https://xxxxx.supabase.co" class="w-full px-3 py-2 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30" />
+                <p class="text-xs text-[#636E72] leading-relaxed">두 사람이 같은 초대 코드로 입장하면 저절로 연결돼요. 초대장 코드는 <strong>우리 온도</strong> 탭에서 복사할 수 있어요.</p>
+                <details class="text-xs rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-3">
+                  <summary class="font-bold text-[#636E72] cursor-pointer">고급 설정</summary>
+                  <div class="space-y-3 mt-3">
+                    <div>
+                      <label class="block font-bold text-[#2D3436] mb-1">Gemini API 키 (선택)</label>
+                      <input id="set-gem-key" type="password" value="${esc(state.geminiKey)}" placeholder="입력하면 AI가 미션을 새로 만들어 줘요" class="w-full px-3 py-2 rounded-xl bg-white border border-[#FF8A80]/30" />
+                    </div>
+                    <div>
+                      <label class="block font-bold text-[#2D3436] mb-1">서버 주소</label>
+                      <input id="set-sb-url" type="url" value="${esc(state.supabaseUrl)}" class="w-full px-3 py-2 rounded-xl bg-white border border-[#FF8A80]/30" />
+                    </div>
+                    <div>
+                      <label class="block font-bold text-[#2D3436] mb-1">서버 키</label>
+                      <input id="set-sb-key" type="password" value="${esc(state.supabaseKey)}" class="w-full px-3 py-2 rounded-xl bg-white border border-[#FF8A80]/30" />
+                    </div>
                   </div>
-                  <div>
-                    <label class="block font-bold text-[#2D3436] mb-1">Supabase Anon Public Key</label>
-                    <input id="set-sb-key" type="password" value="${esc(state.supabaseKey)}" placeholder="eyJhbGciOi..." class="w-full px-3 py-2 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30" />
-                  </div>
-                  <div>
-                    <label class="block font-bold text-[#2D3436] mb-1">Gemini API Key (선택 · 미입력 시 스마트 엔진 사용)</label>
-                    <input id="set-gem-key" type="password" value="${esc(state.geminiKey)}" placeholder="AIza..." class="w-full px-3 py-2 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30" />
-                  </div>
-                </div>
+                </details>
                 <div class="flex gap-2 pt-2">
-                  <button type="button" data-action="reset-all" class="px-3.5 py-2.5 rounded-xl bg-gray-100 text-xs font-bold text-[#636E72]">초기화</button>
-                  <button type="button" data-action="save-settings" class="flex-1 py-2.5 rounded-xl bg-[#FF8A80] text-white text-xs font-extrabold">저장하고 연결하기</button>
+                  <button type="button" data-action="reset-all" class="px-3.5 py-2.5 rounded-xl bg-gray-100 text-xs font-bold text-[#636E72]">처음부터</button>
+                  <button type="button" data-action="save-settings" class="flex-1 py-2.5 rounded-xl bg-[#FF8A80] text-white text-xs font-extrabold">저장</button>
                 </div>
               </div>
             </div>
@@ -655,27 +689,17 @@
 
         root.innerHTML = `
           <!-- 상단 앱바 -->
-          <header class="bg-[#FFF9F5] border-b border-[#FF8A80]/15 px-4 pb-3 safe-top flex items-center justify-between sticky top-0 z-20">
-            <div class="flex items-center gap-2.5">
-              <img src="${AVATAR_SRC}" alt="우리사이" class="w-9 h-9 rounded-2xl object-cover border border-[#FF8A80]/30" />
-              <div>
-                <div class="flex items-center gap-1.5">
-                  <span class="text-base font-extrabold text-[#2D3436]">우리사이</span>
-                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${state.role === 'A' ? 'bg-[#FF8A80]/15 text-[#E0665B]' : 'bg-[#FFB74D]/20 text-[#C67C00]'}">
-                    ${state.role === 'A' ? esc(state.myName) + ' (A)' : esc(state.partnerName) + ' (B)'}
-                  </span>
-                </div>
-                <p class="text-[10px] text-[#636E72]">${esc(state.syncStatus)} · ${state.warmthTemp.toFixed(1)}°C</p>
+          <header class="shrink-0 bg-[#FFF9F5] border-b border-[#FF8A80]/15 px-4 pb-3 safe-top flex items-center justify-between z-20">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <img src="${AVATAR_SRC}" alt="우리사이" class="w-9 h-9 rounded-2xl object-cover border border-[#FF8A80]/30 shrink-0" />
+              <div class="min-w-0">
+                <span class="text-base font-extrabold text-[#2D3436]">우리사이</span>
+                <p class="text-[11px] text-[#636E72] truncate">${esc(state.myName)} ♥ ${esc(state.partnerName)} · ${state.warmthTemp.toFixed(1)}°C</p>
               </div>
             </div>
-            <div class="flex items-center gap-1.5">
-              <button type="button" data-action="toggle-role" class="px-2.5 py-1.5 rounded-xl bg-white border border-[#FF8A80]/25 text-[11px] font-bold text-[#2D3436]">
-                ${state.role === 'A' ? 'B 화면 보기' : 'A 화면 보기'}
-              </button>
-              <button type="button" data-action="open-settings" class="w-8 h-8 rounded-xl bg-white border border-[#2D3436]/10 flex items-center justify-center text-sm" aria-label="설정">
-                ⚙
-              </button>
-            </div>
+            <button type="button" data-action="open-settings" class="w-8 h-8 rounded-xl bg-white border border-[#2D3436]/10 flex items-center justify-center text-sm shrink-0" aria-label="설정">
+              ⚙
+            </button>
           </header>
 
           <!-- 메인 탭 뷰 -->
@@ -684,7 +708,7 @@
           </main>
 
           <!-- 하단 모바일 네비게이션 바 -->
-          <nav class="bg-white border-t border-[#FF8A80]/15 px-3 pt-2 safe-bottom grid grid-cols-3 gap-1 sticky bottom-0 z-20">
+          <nav class="shrink-0 bg-white border-t border-[#FF8A80]/15 px-3 pt-2 safe-bottom grid grid-cols-3 gap-1 z-20">
             <button type="button" data-action="switch-tab" data-tab="missions" class="relative py-2 rounded-2xl flex flex-col items-center gap-0.5 transition-colors ${state.activeTab === 'missions' ? 'bg-[#FFF0EE] text-[#E0665B]' : 'text-[#636E72]'}">
               <span class="text-base leading-none">💌</span>
               <span class="text-[11px] font-bold">오늘의 미션</span>
@@ -753,27 +777,31 @@
         } else if (action === 'send-emotion') {
           const inputEl = document.getElementById('emotion-input');
           const text = ((inputEl && inputEl.value) || state.draftInput || '').trim();
-          if (!text) return;
+          if (!text || sendingEmotion) return;
+          sendingEmotion = true;
           state.draftInput = '';
           const role = state.role;
           state.chats[role] = state.chats[role] || [];
           state.chats[role].push({ id: 'u-' + Date.now(), sender: 'user', text: text, time: nowStr() });
           saveState();
           render();
-
-          const res = await translateEmotion(text);
-          state.chats[role].push({
-            id: 'b-' + Date.now(),
-            sender: 'bot',
-            type: 'draft',
-            empathy: res.empathy,
-            drafts: res.drafts,
-            draftIdx: 0,
-            sent: false,
-            time: nowStr()
-          });
-          saveState();
-          render();
+          try {
+            const res = await translateEmotion(text);
+            state.chats[role].push({
+              id: 'b-' + Date.now(),
+              sender: 'bot',
+              type: 'draft',
+              empathy: res.empathy,
+              drafts: res.drafts,
+              draftIdx: (typeof res.draftIdx === 'number') ? res.draftIdx : Math.floor(Math.random() * res.drafts.length),
+              sent: false,
+              time: nowStr()
+            });
+            saveState();
+            render();
+          } finally {
+            sendingEmotion = false;
+          }
         } else if (action === 'shuffle-draft') {
           const id = btn.getAttribute('data-id');
           const list = state.chats[state.role] || [];
@@ -875,7 +903,7 @@
           await ensureCoupleRow();
           startSyncLoop();
           render();
-          showToast('설정이 저장되었어요!');
+          showToast('설정을 저장했어요.');
         } else if (action === 'copy-code') {
           try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -893,10 +921,12 @@
             showToast('코드: ' + state.coupleCode);
           }
         } else if (action === 'reset-all') {
+          if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
+          sendingEmotion = false;
           state = defaultState();
           saveState();
           render();
-          showToast('앱 데이터를 초기화했어요.');
+          showToast('처음부터 다시 시작할게요.');
         }
       });
 
@@ -905,6 +935,16 @@
           state.draftInput = e.target.value;
         }
       });
+
+      if (window.visualViewport) {
+        const fitViewport = () => {
+          const app = document.getElementById('app');
+          if (app) app.style.height = window.visualViewport.height + 'px';
+        };
+        window.visualViewport.addEventListener('resize', fitViewport);
+        window.visualViewport.addEventListener('scroll', fitViewport);
+        fitViewport();
+      }
 
       render();
       startSyncLoop();
