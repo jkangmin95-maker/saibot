@@ -86,6 +86,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public, vault, extensions
+set statement_timeout = '8s'
 as $fn$
 #variable_conflict use_column
 declare
