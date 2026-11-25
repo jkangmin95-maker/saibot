@@ -591,10 +591,10 @@
                     <button type="button" data-action="copy-pay-code" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
                   </div>
                   <p class="text-[11px] text-[#636E72] leading-relaxed">주문할 때 배송 메모 칸에 이 코드를 꼭 붙여 넣어 주세요. 이 코드로 두 분을 찾아서 열어 드려요.</p>
-                  ${btn('함께 열기')}
+                  ${btn('결제하러 가기')}
                 </div>
                 ${opened ? `
-                <div class="rounded-2xl bg-[#FFF8E7] border border-[#FFB74D]/50 p-4 text-center">
+                <div class="rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-4 text-center">
                   <p class="text-sm font-extrabold text-[#2D3436]">결제 확인 중이에요</p>
                   <p class="text-[11px] text-[#636E72] mt-1 leading-relaxed">${esc('확인되면 두 분 모두에게 바로 열려요. ' + p.unlock_eta)}</p>
                 </div>` : ''}`;
@@ -610,7 +610,7 @@
                     <p class="text-sm font-extrabold text-[#2D3436]">쓴 말은 그대로 보이지 않아요</p>
                     <p class="text-xs text-[#636E72] mt-1.5 leading-relaxed">여기 쓴 문장은 연인에게 절대 보이지 않아요. 요즘 마음이 어느 쪽에 있는지만 주제로 정리돼서, 두 분이 함께 여는 리포트에 들어갈 수 있어요.</p>
                   </div>
-                  <button type="button" data-action="secret-info-ok" class="w-full py-2.5 rounded-xl bg-[#2D3436] text-white text-xs font-extrabold">확인했어요</button>
+                  <button type="button" data-action="secret-info-ok" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">확인했어요</button>
                 </div>`;
       }
 
