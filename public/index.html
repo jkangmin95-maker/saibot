@@ -196,7 +196,10 @@
           if (!s.supabaseUrl) s.supabaseUrl = DEFAULT_SUPABASE_URL;
           if (!s.supabaseKey) s.supabaseKey = DEFAULT_SUPABASE_ANON_KEY;
           if (s.supabaseUrl && s.supabaseKey && s.syncStatus === '로컬 체험 모드') {
-            s.syncStatus = 'Supabase 연동됨';
+            s.syncStatus = 'connected';
+          }
+          if (Array.isArray(s.missions)) {
+            s.missions = s.missions.filter((m) => m && String(m.id).indexOf('base-') !== 0 && !(m.message || '').includes("디지털 디톡스 15분"));
           }
           return s;
         } catch (_e) {
@@ -274,7 +277,11 @@
           return local && local.accepted && !r.accepted ? Object.assign({}, r, { accepted: true }) : r;
         });
         (state.missions || []).forEach((m) => {
-          if (!remoteIds.has(m.id) && String(m.id).indexOf('base-') !== 0) merged.unshift(m);
+          if (remoteIds.has(m.id)) return;
+          if (String(m.id).indexOf('base-') === 0) return; // drop old demo cards
+          const ts = Number(String(m.id).replace(/^m-/, ''));
+          // keep only a mission just sent on this phone, not yet visible on the server
+          if (ts && (Date.now() - ts) < 20000) merged.unshift(m);
         });
         return merged;
       }
