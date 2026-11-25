@@ -1,4 +1,4 @@
-const CACHE_NAME = 'urisai-pwa-v9';
+const CACHE_NAME = 'urisai-pwa-v9-1';
 const ASSETS = ['./manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -28,8 +28,11 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('/index.html') ||
     /index\.html$/i.test(url.pathname);
 
+  // HTML: ask GitHub Pages to revalidate (it sends max-age=600), so a new deploy shows up
+  // on the next open instead of up to 10 minutes later.
+  const request = isHtml ? fetch(event.request.url, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(event.request);
   event.respondWith(
-    fetch(event.request)
+    request
       .then((res) => {
         // HTML is network-first and not written back, so phones/PCs
         // cannot stay stuck on an old index.js mixed with new data.
