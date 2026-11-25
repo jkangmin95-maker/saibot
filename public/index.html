@@ -50,8 +50,8 @@
   <script>
     (function () {
       const AVATAR_SRC = "./icon-192.png";
-      const STORAGE_PREFIX = "urisai_state_v8_";
-      const APP_VERSION = "v8";
+      const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
+      const APP_VERSION = "v9";
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
@@ -164,7 +164,7 @@
       }
 
       function welcomeChat(id) {
-        return [{ id: id, sender: 'bot', type: 'welcome', text: '안녕! 오늘 연인에게 서운했거나 아쉬웠던 점을 솔직하게 털어놓아 주세요. (상대방에겐 절대 그대로 전달되지 않아요 🤫)', time: '방금 전' }];
+        return [{ id: id, sender: 'bot', type: 'welcome', text: '안녕하세요, 사이봇이에요! 오늘 연인이랑 있었던 일, 서운했던 점, 고민 뭐든 편하게 얘기해 주세요. 여기 대화는 연인에게 절대 보이지 않아요 🤫', time: '방금 전' }];
       }
 
       function defaultState() {
@@ -424,43 +424,156 @@
         state.onboarded = true;
       }
 
-      async function translateEmotion(text) {
+      // ---- 사이봇 대화 ----
+      // 1) v9 서버 RPC sai_chat (Gemini, 최근 대화 맥락 포함)
+      // 2) sai_chat 이 아직 DB에 없으면(마이그레이션 전) 예전 generate_mission
+      // 3) 둘 다 실패할 때만 아래 기본 답변(매번 다른 문구, 최근 것 피함)
+      const FALLBACK_EMPATHY = {
+        phone: [
+          '같이 있는데 화면만 보고 있으면 옆에 있어도 혼자인 기분이 들죠. 그 마음 충분히 이해돼요.',
+          '대화하고 싶은데 폰이 먼저면 서운한 게 당연해요. 화난 마음까지 다 괜찮아요.',
+          '눈 맞추고 싶은 순간에 폰만 보면 김이 확 새죠. 오늘 그 마음 제가 먼저 알아줄게요.'
+        ],
+        contact: [
+          '연락을 기다리는 시간은 유난히 길게 느껴지죠. 바쁜 건 알아도 마음이 작아지는 건 어쩔 수 없어요.',
+          '답이 없으면 괜히 나만 기다리는 것 같아 속상하죠. 그 기다림, 충분히 서운할 만해요.',
+          '하루 종일 소식이 없으면 걱정도 되고 서운하기도 하죠. 그 마음 솔직하게 말해줘서 고마워요.'
+        ],
+        affection: [
+          '마음은 알아도 가끔은 말로 듣고 싶잖아요. 그 바람, 전혀 욕심이 아니에요.',
+          '표현이 줄면 괜히 사랑이 식은 것 같아 외로워지죠. 그렇게 느끼는 거 이상한 거 아니에요.',
+          '좋아한다는 말 한마디가 그리울 때가 있죠. 그 마음 제가 먼저 꼭 안아줄게요.'
+        ],
+        date: [
+          '매번 혼자 고민하고 준비하면 지칠 만해요. 이번엔 상대가 먼저 움직이게 살짝 도와볼게요.',
+          '나만 애쓰는 것 같으면 서운하죠. 그동안 챙겨온 마음, 정말 수고 많았어요.',
+          '데이트를 늘 내가 끌고 가는 느낌이면 아쉬울 수밖에 없어요. 그 마음 충분히 이해돼요.'
+        ],
+        tone: [
+          '가까운 사이라 말투 하나에 더 크게 상처받죠. 그 순간 많이 속상했겠어요.',
+          '피곤한 건 알아도 차가운 말투는 마음에 오래 남죠. 상처받은 거 당연해요.',
+          '말 한마디의 온도가 하루를 바꾸기도 하잖아요. 그 서운함 충분히 이해돼요.'
+        ],
+        default: [
+          '그런 일이 있었군요. 말로 꺼내줘서 고마워요, 그 마음 제가 잘 들었어요.',
+          '그 얘기 들으니 마음이 쓰이네요. 혼자 삭이지 말고 여기다 편하게 털어놔요.',
+          '그랬구나, 쉽지 않았겠어요. 조금 더 얘기해 주면 같이 방법을 찾아볼게요.',
+          '솔직하게 말해줘서 고마워요. 그 마음 충분히 그럴 수 있어요.'
+        ]
+      };
+      const SMALLTALK_REPLIES = [
+        '안녕하세요! 오늘 연인이랑은 어떤 하루였어요? 좋았던 일도, 서운했던 일도 편하게 얘기해 주세요 😊',
+        '반가워요! 요즘 둘 사이에 신경 쓰이는 일 있으면 여기서 편하게 털어놔요.',
+        '저는 두 분 사이를 몰래 도와주는 사이봇이에요. 여기 얘기는 연인에게 보이지 않으니까 마음 편히 말해 주세요.'
+      ];
+
+      function pickVaried(list, avoid) {
+        const pool = list.filter((x) => (avoid || []).indexOf(x) < 0);
+        const from = pool.length ? pool : list;
+        return from[Math.floor(Math.random() * from.length)];
+      }
+
+      function isSmallTalk(text) {
+        const s = String(text || '').trim();
+        if (s.length > 25) return false;
+        return /^(안녕|하이|ㅎㅇ|헬로|hello|hi|반가|뭐해|누구|너는|넌|고마워|ㄱㅅ|ㅋㅋ|ㅎㅎ|테스트|test)/i.test(s);
+      }
+
+      function recentBotTexts(role) {
+        return (state.chats[role] || []).filter((m) => m.sender === 'bot').slice(-6).map((m) => m.empathy || m.text || '');
+      }
+
+      function localFallback(text, role) {
+        const recentTexts = recentBotTexts(role);
+        if (isSmallTalk(text)) {
+          return { empathy: pickVaried(SMALLTALK_REPLIES, recentTexts), drafts: [], draftIdx: 0, fallback: true };
+        }
         const cat = detectCategory(text);
         const preset = NUDGE_LIBRARY[cat] || NUDGE_LIBRARY.default;
-        const drafts = preset.drafts.slice();
-        const fallback = function () {
-          return { empathy: preset.empathy, drafts: drafts, draftIdx: Math.floor(Math.random() * drafts.length) };
+        const sentTitles = (state.missions || []).map((m) => m.title);
+        (state.chats[role] || []).forEach((m) => {
+          if (m.sent && m.drafts && m.drafts[m.draftIdx || 0]) sentTitles.push(m.drafts[m.draftIdx || 0].title);
+        });
+        let drafts = preset.drafts.filter((d) => sentTitles.indexOf(d.title) < 0);
+        if (drafts.length < 2) drafts = preset.drafts.slice();
+        drafts = drafts.slice().sort(() => Math.random() - 0.5);
+        return {
+          empathy: pickVaried(FALLBACK_EMPATHY[cat] || FALLBACK_EMPATHY.default, recentTexts),
+          drafts: drafts,
+          draftIdx: 0,
+          fallback: true
         };
+      }
 
-        if (!state.coupleCode) return fallback();
+      // 예전 버전의 고정 문구는 맥락에서 뺌 (AI가 따라 하지 않게)
+      const PRESET_EMPATHY = new Set(Object.keys(NUDGE_LIBRARY).map((k) => NUDGE_LIBRARY[k].empathy));
 
+      // 비밀방 대화 기록 → [{role:'user'|'bot', text}] (최근 10개)
+      function chatHistory(role) {
+        const out = [];
+        (state.chats[role] || []).forEach((m) => {
+          if (m.sender === 'user') out.push({ role: 'user', text: String(m.text || '').slice(0, 500) });
+          else if (m.type === 'draft' && m.empathy && !m.fallback && !PRESET_EMPATHY.has(m.empathy)) out.push({ role: 'bot', text: String(m.empathy).slice(0, 500) });
+        });
+        return out.slice(-10);
+      }
+
+      async function rpcTimed(name, args, ms) {
+        const token = await accessToken();
+        if (!token) return { status: 401, data: null };
+        const ctrl = new AbortController();
+        const timer = setTimeout(function () { ctrl.abort(); }, ms);
         try {
-          const ctrl = new AbortController();
-          const token = await accessToken();
-          if (!token) return fallback();
-          const timer = setTimeout(function () { ctrl.abort(); }, 8000);
-          const res = await fetch(DEFAULT_SUPABASE_URL + '/rest/v1/rpc/generate_mission', {
+          const res = await fetch(DEFAULT_SUPABASE_URL + '/rest/v1/rpc/' + name, {
             method: 'POST',
             headers: {
               apikey: DEFAULT_SUPABASE_ANON_KEY,
               Authorization: 'Bearer ' + token,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ feeling: String(text || '').slice(0, 500), couple_code: state.coupleCode }),
+            body: JSON.stringify(args || {}),
             signal: ctrl.signal
           });
+          let data = null;
+          try { data = await res.json(); } catch (_e) {}
+          return { status: res.status, data: data };
+        } catch (_e) {
+          return { status: 0, data: null };
+        } finally {
           clearTimeout(timer);
-          if (!res.ok) return fallback();
-          const parsed = await res.json();
-          if (parsed && parsed.empathy && parsed.message) {
-            return {
-              empathy: parsed.empathy,
-              drafts: [{ title: parsed.title || '오늘의 다정함 미션', badge: '오늘의 데일리 미션', message: parsed.message }].concat(drafts),
-              draftIdx: 0
-            };
+        }
+      }
+
+      function missionDraft(title, message, i) {
+        const badges = ['오늘의 데일리 미션', '다정함 리마인더', '커플 추천 팁'];
+        return { title: String(title || '오늘의 다정함 미션').slice(0, 40), badge: badges[i % badges.length], message: String(message || '').slice(0, 300) };
+      }
+
+      async function askSaibot(text, role) {
+        const clean = String(text || '').slice(0, 500);
+        if (!state.coupleCode) return localFallback(clean, role);
+
+        const r = await rpcTimed('sai_chat', { couple_code: state.coupleCode, messages: chatHistory(role) }, 25000);
+        const d = r.data;
+        if (r.status === 200 && d && typeof d.reply === 'string' && d.reply.trim()) {
+          const drafts = (Array.isArray(d.missions) ? d.missions : [])
+            .filter((m) => m && m.message)
+            .slice(0, 3)
+            .map((m, i) => missionDraft(m.title, m.message, i));
+          return { empathy: d.reply.trim(), drafts: drafts, draftIdx: 0, ai: true };
+        }
+
+        // sai_chat 이 아직 없는 DB(v8)라면 예전 미션 생성기로
+        const missing = r.status === 404 || (d && (d.code === 'PGRST202' || d.code === '42883'));
+        if (missing && !isSmallTalk(clean)) {
+          const g = await rpcTimed('generate_mission', { feeling: clean, couple_code: state.coupleCode }, 12000);
+          const gd = g.data;
+          if (g.status === 200 && gd && gd.empathy && gd.message) {
+            const extra = localFallback(clean, role).drafts.slice(0, 2);
+            return { empathy: gd.empathy, drafts: [missionDraft(gd.title, gd.message, 0)].concat(extra), draftIdx: 0, ai: true };
           }
-        } catch (_e) {}
-        return fallback();
+        }
+        return localFallback(clean, role);
       }
 
       function waitingBanner() {
@@ -645,19 +758,30 @@
                     </div>
                   `;
                 }
-                const draft = msg.drafts[msg.draftIdx || 0];
+                const drafts = Array.isArray(msg.drafts) ? msg.drafts : [];
+                const draft = drafts[msg.draftIdx || 0] || drafts[0];
+                const replyBubble = `
+                      <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-sm">
+                        <p class="text-[13px] text-[#2D3436] leading-relaxed whitespace-pre-line">${esc(msg.empathy)}</p>
+                        ${msg.fallback ? '<p class="mt-1.5 text-[10px] text-[#B2BEC3]">AI 연결이 잠시 불안정해서 기본 답변을 보여드렸어요</p>' : ''}
+                      </div>`;
+                if (!draft) {
+                  return `
+                    <div class="flex items-start gap-2 animate-pop">
+                      <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
+                      <div class="flex-1 min-w-0">${replyBubble}</div>
+                    </div>
+                  `;
+                }
                 return `
                   <div class="flex items-start gap-2 animate-pop">
                     <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
                     <div class="flex-1 space-y-2.5 min-w-0">
-                      <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-sm">
-                        <p class="text-[11px] font-bold text-[#FF8A80] mb-1">사이봇의 공감</p>
-                        <p class="text-[13px] text-[#2D3436] leading-relaxed">${esc(msg.empathy)}</p>
-                      </div>
+                      ${replyBubble}
                       <div class="bg-gradient-to-br from-white to-[#FFF3F0] rounded-2xl p-3.5 border border-[#FF8A80]/35 shadow-sm">
                         <div class="flex items-center justify-between mb-2">
-                          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF8A80]/15 text-[#D95B50]">✨ 오늘의 미션 제안</span>
-                          ${!msg.sent ? `<button type="button" data-action="shuffle-draft" data-id="${esc(msg.id)}" class="text-[11px] font-bold text-[#636E72] hover:text-[#FF8A80]">다른 표현</button>` : ''}
+                          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF8A80]/15 text-[#D95B50]">✨ 연인에게 보낼 미션 제안</span>
+                          ${!msg.sent && drafts.length > 1 ? `<button type="button" data-action="shuffle-draft" data-id="${esc(msg.id)}" class="text-[11px] font-bold text-[#636E72] hover:text-[#FF8A80]">다른 제안 (${(msg.draftIdx || 0) + 1}/${drafts.length})</button>` : ''}
                         </div>
                         <div class="bg-white rounded-xl p-3 border border-[#FF8A80]/15">
                           <p class="text-[10px] font-bold text-[#FF8A80] mb-1">${esc(draft.badge)} · ${esc(draft.title)}</p>
@@ -679,6 +803,11 @@
                   </div>
                 `;
               }).join('')}
+              ${state.botTyping ? `
+                <div id="bot-typing" class="flex items-start gap-2 animate-pop">
+                  <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
+                  <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-sm text-[13px] text-[#9AA5A9]">사이봇이 생각하는 중이에요…</div>
+                </div>` : ''}
             </div>
 
             <!-- 빠른 태그 + 입력창 -->
@@ -692,7 +821,7 @@
                 <span class="shrink-0 w-5" aria-hidden="true"></span>
               </div>
               <div class="flex items-end gap-2 bg-[#FFF9F5] rounded-2xl border border-[#FF8A80]/30 px-3 py-2">
-                <textarea id="emotion-input" rows="2" enterkeyhint="send" placeholder="서운했거나 아쉬웠던 점을 솔직하게 털어놓아 주세요..." class="flex-1 bg-transparent text-[13px] text-[#2D3436] placeholder-[#9AA5A9] focus:outline-none resize-none leading-snug">${esc(state.draftInput)}</textarea>
+                <textarea id="emotion-input" rows="2" maxlength="500" enterkeyhint="send" placeholder="사이봇에게 편하게 얘기해 보세요 (서운했던 일, 고민, 뭐든지)" class="flex-1 bg-transparent text-[13px] text-[#2D3436] placeholder-[#9AA5A9] focus:outline-none resize-none leading-snug">${esc(state.draftInput)}</textarea>
                 <button type="button" data-action="send-emotion" class="w-9 h-9 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white flex items-center justify-center shrink-0 shadow-sm font-bold text-sm">
                   ↑
                 </button>
@@ -990,20 +1119,30 @@
           saveState();
           render();
           try {
-            const res = await translateEmotion(text);
+            state.botTyping = true;
+            render();
+            let res;
+            try {
+              res = await askSaibot(text, role);
+            } catch (_e) {
+              res = localFallback(text, role);
+            }
+            state.botTyping = false;
             state.chats[role].push({
               id: 'b-' + Date.now(),
               sender: 'bot',
               type: 'draft',
               empathy: res.empathy,
-              drafts: res.drafts,
-              draftIdx: (typeof res.draftIdx === 'number') ? res.draftIdx : Math.floor(Math.random() * res.drafts.length),
+              drafts: res.drafts || [],
+              draftIdx: res.draftIdx || 0,
+              fallback: Boolean(res.fallback),
               sent: false,
               time: nowStr()
             });
             saveState();
             render();
           } finally {
+            state.botTyping = false;
             sendingEmotion = false;
           }
         } else if (action === 'shuffle-draft') {
