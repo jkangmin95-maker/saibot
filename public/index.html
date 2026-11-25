@@ -44,7 +44,7 @@
   </div>
 
   <!-- 토스트 컨테이너 -->
-  <div id="toast" class="fixed left-1/2 -translate-x-1/2 z-[60] hidden max-w-[380px] w-[90%] bg-[#2D3436] text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl text-center" style="top: max(4.75rem, calc(env(safe-area-inset-top) + 3.75rem))"></div>
+  <div id="toast" class="fixed left-1/2 -translate-x-1/2 z-[60] hidden max-w-[380px] w-[90%] bg-[#2D3436] text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl text-center" style="bottom: max(11.75rem, calc(env(safe-area-inset-bottom) + 10.5rem))"></div>
 
   <script>
     (function () {
@@ -177,6 +177,7 @@
           },
           draftInput: '',
           showSettings: false,
+          showLogoutConfirm: false,
           showInstallGuide: false,
           supabaseUrl: DEFAULT_SUPABASE_URL,
           supabaseKey: DEFAULT_SUPABASE_ANON_KEY,
@@ -215,6 +216,13 @@
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         } catch (_e) {}
+      }
+
+      function hideToast() {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.classList.add('hidden');
+        clearTimeout(el._t);
       }
 
       function showToast(msg) {
@@ -568,6 +576,7 @@
                     ${esc(t.label)}
                   </button>
                 `).join('')}
+                <span class="shrink-0 w-5" aria-hidden="true"></span>
               </div>
               <div class="flex items-end gap-2 bg-[#FFF9F5] rounded-2xl border border-[#FF8A80]/30 px-3 py-2">
                 <textarea id="emotion-input" rows="2" enterkeyhint="send" placeholder="서운했거나 아쉬웠던 점을 솔직하게 털어놓아 주세요..." class="flex-1 bg-transparent text-[13px] text-[#2D3436] placeholder-[#9AA5A9] focus:outline-none resize-none leading-snug">${esc(state.draftInput)}</textarea>
@@ -625,32 +634,65 @@
         if (state.showSettings) {
           html += `
             <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
-              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 space-y-4 shadow-2xl max-h-[88vh] overflow-y-auto">
-                <div class="flex items-center justify-between">
+              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 shadow-2xl max-h-[88vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-4">
                   <h3 class="text-base font-extrabold text-[#2D3436]">설정</h3>
                   <button type="button" data-action="close-modals" class="text-sm font-bold text-[#636E72] px-2 py-1">닫기</button>
                 </div>
-                <p class="text-xs text-[#636E72] leading-relaxed">두 사람이 같은 초대 코드로 입장하면 저절로 연결돼요. 초대장 코드는 <strong>우리 온도</strong> 탭에서 복사할 수 있어요.</p>
-                <details class="text-xs rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-3">
-                  <summary class="font-bold text-[#636E72] cursor-pointer">고급 설정</summary>
-                  <div class="space-y-3 mt-3">
+
+                <div class="space-y-4 text-xs">
+                  <div class="space-y-3">
                     <div>
-                      <label class="block font-bold text-[#2D3436] mb-1">Gemini API 키 (선택)</label>
-                      <input id="set-gem-key" type="password" value="${esc(state.geminiKey)}" placeholder="입력하면 AI가 미션을 새로 만들어 줘요" class="w-full px-3 py-2 rounded-xl bg-white border border-[#FF8A80]/30" />
+                      <label class="block font-bold text-[#636E72] mb-1">내 닉네임</label>
+                      <input id="set-my-name" type="text" value="${esc(state.myName)}" maxlength="12" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold text-[#2D3436] focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
                     </div>
                     <div>
-                      <label class="block font-bold text-[#2D3436] mb-1">서버 주소</label>
-                      <input id="set-sb-url" type="url" value="${esc(state.supabaseUrl)}" class="w-full px-3 py-2 rounded-xl bg-white border border-[#FF8A80]/30" />
+                      <label class="block font-bold text-[#636E72] mb-1">연인 닉네임</label>
+                      <input id="set-partner-name" type="text" value="${esc(state.partnerName)}" maxlength="12" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold text-[#2D3436] focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
                     </div>
-                    <div>
-                      <label class="block font-bold text-[#2D3436] mb-1">서버 키</label>
-                      <input id="set-sb-key" type="password" value="${esc(state.supabaseKey)}" class="w-full px-3 py-2 rounded-xl bg-white border border-[#FF8A80]/30" />
+                    <button type="button" data-action="save-settings" class="w-full py-2.5 rounded-xl bg-[#FF8A80] text-white text-xs font-extrabold">닉네임 저장</button>
+                  </div>
+
+                  <div class="rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-3.5 space-y-2">
+                    <p class="font-bold text-[#2D3436]">우리 초대 코드</p>
+                    <p class="text-[11px] text-[#9AA5A9] leading-relaxed">연인에게 이 코드를 알려주고, 같은 코드로 입장하면 서로 연결돼요.</p>
+                    <div class="flex items-center justify-between gap-2 pt-0.5">
+                      <span class="font-mono font-extrabold text-base text-[#2D3436] tracking-wider">${esc(state.coupleCode)}</span>
+                      <div class="flex gap-1.5 shrink-0">
+                        <button type="button" data-action="copy-code" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
+                        <button type="button" data-action="share-code" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">공유</button>
+                      </div>
                     </div>
                   </div>
-                </details>
-                <div class="flex gap-2 pt-2">
-                  <button type="button" data-action="reset-all" class="px-3.5 py-2.5 rounded-xl bg-gray-100 text-xs font-bold text-[#636E72]">처음부터</button>
-                  <button type="button" data-action="save-settings" class="flex-1 py-2.5 rounded-xl bg-[#FF8A80] text-white text-xs font-extrabold">저장</button>
+
+                  <button type="button" data-action="open-install" class="w-full text-left rounded-2xl bg-white border border-[#2D3436]/8 px-3.5 py-3 flex items-center justify-between">
+                    <span>
+                      <span class="block font-bold text-[#2D3436]">홈 화면에 추가</span>
+                      <span class="block text-[11px] text-[#9AA5A9] mt-0.5">아이폰 · 안드로이드에 앱처럼 설치하기</span>
+                    </span>
+                    <span class="text-[#9AA5A9]">›</span>
+                  </button>
+
+                  <p class="text-[11px] text-[#B2BEC3] text-center pt-1">우리사이 · 커플 감정 번역 &amp; 다정함 코칭</p>
+                </div>
+
+                <button type="button" data-action="logout-ask" class="mt-5 w-full py-3 rounded-2xl border border-[#FF8A80]/30 text-[#E0665B] text-xs font-extrabold bg-white hover:bg-[#FFF0EE]">
+                  로그아웃
+                </button>
+              </div>
+            </div>
+          `;
+        }
+
+        if (state.showLogoutConfirm) {
+          html += `
+            <div class="fixed inset-0 z-[70] bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
+              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 shadow-2xl space-y-3">
+                <h3 class="text-base font-extrabold text-[#2D3436]">로그아웃할까요?</h3>
+                <p class="text-xs text-[#636E72] leading-relaxed">이 휴대폰에서만 연결이 해제되고 시작 화면으로 돌아가요. 연인의 앱과 우리 기록은 그대로 남아요.</p>
+                <div class="flex gap-2 pt-1">
+                  <button type="button" data-action="logout-cancel" class="flex-1 py-2.5 rounded-xl bg-[#F1F2F6] text-[#2D3436] text-xs font-bold">취소</button>
+                  <button type="button" data-action="logout-confirm" class="flex-1 py-2.5 rounded-xl bg-[#FF8A80] text-white text-xs font-extrabold">로그아웃</button>
                 </div>
               </div>
             </div>
@@ -888,29 +930,56 @@
             });
           }
         } else if (action === 'open-settings') {
+          hideToast();
           state.showSettings = true;
           render();
         } else if (action === 'open-install') {
+          hideToast();
           state.showInstallGuide = true;
           render();
         } else if (action === 'close-modals') {
           state.showSettings = false;
           state.showInstallGuide = false;
+          state.showLogoutConfirm = false;
           render();
         } else if (action === 'save-settings') {
-          const u = document.getElementById('set-sb-url');
-          const k = document.getElementById('set-sb-key');
-          const g = document.getElementById('set-gem-key');
-          state.supabaseUrl = u ? u.value.trim() : '';
-          state.supabaseKey = k ? k.value.trim() : '';
-          state.geminiKey = g ? g.value.trim() : '';
-          state.syncStatus = (state.supabaseUrl && state.supabaseKey) ? 'Supabase 연동됨' : '로컬 체험 모드';
+          const myEl = document.getElementById('set-my-name');
+          const ptEl = document.getElementById('set-partner-name');
+          if (myEl && myEl.value.trim()) state.myName = myEl.value.trim();
+          if (ptEl && ptEl.value.trim()) state.partnerName = ptEl.value.trim();
           state.showSettings = false;
           saveState();
-          await ensureCoupleRow();
-          startSyncLoop();
           render();
-          showToast('설정을 저장했어요.');
+          showToast('닉네임을 저장했어요.');
+        } else if (action === 'share-code') {
+          const text = '우리사이 초대 코드: ' + state.coupleCode + '\n같은 코드로 입장하면 서로 연결돼요.';
+          try {
+            if (navigator.share) {
+              await navigator.share({ title: '우리사이', text: text });
+            } else {
+              throw new Error('share-unavailable');
+            }
+          } catch (err) {
+            if (err && err.name === 'AbortError') return;
+            const btn = document.querySelector('[data-action="copy-code"]');
+            if (btn) btn.click();
+            else showToast('코드: ' + state.coupleCode);
+          }
+        } else if (action === 'logout-ask') {
+          hideToast();
+          state.showLogoutConfirm = true;
+          render();
+        } else if (action === 'logout-cancel') {
+          state.showLogoutConfirm = false;
+          render();
+        } else if (action === 'logout-confirm') {
+          if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
+          sendingEmotion = false;
+          try { localStorage.removeItem(STORAGE_KEY); } catch (_e) {}
+          state = defaultState();
+          saveState();
+          render();
+          showToast('이 휴대폰에서 로그아웃했어요.');
         } else if (action === 'copy-code') {
           try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -927,13 +996,6 @@
           } catch (_e) {
             showToast('코드: ' + state.coupleCode);
           }
-        } else if (action === 'reset-all') {
-          if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
-          sendingEmotion = false;
-          state = defaultState();
-          saveState();
-          render();
-          showToast('처음부터 다시 시작할게요.');
         }
       });
 
