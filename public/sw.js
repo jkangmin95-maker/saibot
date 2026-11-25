@@ -1,4 +1,4 @@
-const CACHE_NAME = 'urisai-pwa-v9-1';
+const CACHE_NAME = 'urisai-pwa-v10';
 const ASSETS = ['./manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -26,7 +26,7 @@ self.addEventListener('fetch', (event) => {
     event.request.mode === 'navigate' ||
     url.pathname.endsWith('/') ||
     url.pathname.endsWith('/index.html') ||
-    /index\.html$/i.test(url.pathname);
+    /(index|quiz)\.html$/i.test(url.pathname);
 
   // HTML: ask GitHub Pages to revalidate (it sends max-age=600), so a new deploy shows up
   // on the next open instead of up to 10 minutes later.
