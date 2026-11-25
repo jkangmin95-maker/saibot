@@ -57,14 +57,17 @@
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
       const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGlnc3JwYXhpdGxwdXdiZGp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU1NzgxNzEsImV4cCI6MjExMTE1NDE3MX0.9VRYSaXhXSjCjvcVO60C6-1TVM47yG9rprFegw3ZW5A";
 
-      // PWA Service Worker: 새 버전이면 바로 적용 후 새로고침
+      // PWA Service Worker: 이미 설치된 워커가 새 버전으로 교체될 때만 새로고침.
+      // (첫 방문의 clients.claim 으로는 새로고침하지 않아 입장 도중 폼이 날아가지 않음)
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-        let refreshing = false;
-        navigator.serviceWorker.addEventListener('controllerchange', function () {
-          if (refreshing) return;
-          refreshing = true;
-          location.reload();
-        });
+        if (navigator.serviceWorker.controller) {
+          let refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', function () {
+            if (refreshing) return;
+            refreshing = true;
+            location.reload();
+          });
+        }
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('./sw.js').catch(() => {});
         });
