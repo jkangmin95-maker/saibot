@@ -181,7 +181,6 @@
           showInstallGuide: false,
           supabaseUrl: DEFAULT_SUPABASE_URL,
           supabaseKey: DEFAULT_SUPABASE_ANON_KEY,
-          geminiKey: '',
           syncStatus: 'Supabase 연동됨'
         };
       }
@@ -196,6 +195,7 @@
           // Keep built-in project defaults if a previous visit saved empty keys
           if (!s.supabaseUrl) s.supabaseUrl = DEFAULT_SUPABASE_URL;
           if (!s.supabaseKey) s.supabaseKey = DEFAULT_SUPABASE_ANON_KEY;
+          delete s.geminiKey;
           if (s.supabaseUrl && s.supabaseKey && s.syncStatus === '로컬 체험 모드') {
             s.syncStatus = 'connected';
           }
@@ -357,36 +357,38 @@
       async function translateEmotion(text) {
         const cat = detectCategory(text);
         const preset = NUDGE_LIBRARY[cat] || NUDGE_LIBRARY.default;
-
-        if (state.geminiKey && state.geminiKey.trim()) {
-          try {
-            const prompt = `당신은 커플 관계 코칭 AI '사이봇'입니다. 연인이 서운한 감정을 털어놓았습니다: "${text}"
-반드시 JSON으로만 답하세요(코드블록 없이):
-{"empathy":"깊이 공감하고 위로하는 따뜻한 한국어 2문장","title":"상대방에게 보낼 자연스러운 데일리 미션 제목(15자 이내)","message":"서운함이 전혀 티 나지 않는 자연스러운 커플 추천 미션 문구(한국어 2문장)"}`;
-            const res = await fetch(
-              'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' +
-                encodeURIComponent(state.geminiKey.trim()),
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-              }
-            );
-            if (res.ok) {
-              const json = await res.json();
-              const out = (json.candidates && json.candidates[0] && json.candidates[0].content.parts[0].text) || '';
-              const parsed = JSON.parse(out.replace(/```json|```/g, '').trim());
-              if (parsed.empathy && parsed.message) {
-                return {
-                  empathy: parsed.empathy,
-                  drafts: [{ title: parsed.title || '오늘의 다정함 미션', badge: '오늘의 데일리 미션', message: parsed.message }].concat(preset.drafts)
-                };
-              }
-            }
-          } catch (_e) {}
-        }
         const drafts = preset.drafts.slice();
-        return { empathy: preset.empathy, drafts: drafts, draftIdx: Math.floor(Math.random() * drafts.length) };
+        const fallback = function () {
+          return { empathy: preset.empathy, drafts: drafts, draftIdx: Math.floor(Math.random() * drafts.length) };
+        };
+
+        if (!state.supabaseUrl || !state.supabaseKey || !state.coupleCode) return fallback();
+
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(function () { ctrl.abort(); }, 8000);
+          const res = await fetch(state.supabaseUrl.replace(/\/$/, '') + '/rest/v1/rpc/generate_mission', {
+            method: 'POST',
+            headers: {
+              apikey: state.supabaseKey,
+              Authorization: 'Bearer ' + state.supabaseKey,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ feeling: String(text || '').slice(0, 500), couple_code: state.coupleCode }),
+            signal: ctrl.signal
+          });
+          clearTimeout(timer);
+          if (!res.ok) return fallback();
+          const parsed = await res.json();
+          if (parsed && parsed.empathy && parsed.message) {
+            return {
+              empathy: parsed.empathy,
+              drafts: [{ title: parsed.title || '오늘의 다정함 미션', badge: '오늘의 데일리 미션', message: parsed.message }].concat(drafts),
+              draftIdx: 0
+            };
+          }
+        } catch (_e) {}
+        return fallback();
       }
 
       function renderOnboarding() {
