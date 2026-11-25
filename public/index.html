@@ -50,7 +50,7 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v10";
+      const APP_VERSION = "v11";
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
@@ -190,7 +190,11 @@
           showLogoutConfirm: false,
           showInstallGuide: false,
           showCombo: false,
-          shareConsent: null // v10: 우리 조합 카드 공유 동의 (my_share_consent)
+          shareConsent: null, // v10: 우리 조합 카드 공유 동의 (my_share_consent)
+          paywall: null, // v11: get_paywall_config (켜져 있을 때만 값이 있음)
+          report: null, // v11: my_report
+          showReport: false,
+          secretInfoOpen: false
         };
       }
 
@@ -411,6 +415,7 @@
           const consent = await sbFetchQuiet('rpc/my_share_consent', { method: 'POST', body: JSON.stringify({ p_card_type: 'combo' }) });
           if (consent !== null && applyShareConsent(consent && consent.id ? consent : null)) changed = true;
         }
+        if (await refreshPaywall(false)) changed = true;
         if (changed) {
           saveState();
           if (!isUserTyping()) render();
@@ -433,6 +438,192 @@
           }
         }
         return true;
+      }
+
+      // ---- v11: 심층 리포트(마음 날씨) + 결제 화면 ----
+      // 서버 플래그(get_paywall_config)가 켜지고 가격·아임웹 링크·열리는 시간이 모두 채워졌을 때만 보인다.
+      // 꺼져 있으면 아래 함수는 모두 빈 문자열/원래 문구를 돌려줘서 기존 화면이 그대로다.
+      // 리포트 내용은 서버(my_report)가 미션 기록으로 만든 키(다정함 방식, 서운함 주제)뿐이고, 비밀방 원문은 어디에도 없다.
+      const SECRET_COPY = [
+        ['여기 대화는 연인에게 절대 보이지 않아요', '쓴 문장은 연인에게 절대 보이지 않아요'],
+        ['여기 얘기는 연인에게 보이지 않으니까 마음 편히 말해 주세요.', '쓴 문장은 연인에게 절대 보이지 않아요. 마음 편히 말해 주세요.']
+      ];
+      let paywallCheckedAt = 0;
+      let teaserViewLogged = false;
+
+      function paywallOn() {
+        const p = state.paywall;
+        return Boolean(p && p.enabled === true && Number(p.price_krw) > 0
+          && typeof p.checkout_url === 'string' && /^https:\/\/[^\s<>"'`\\]+$/.test(p.checkout_url)
+          && typeof p.unlock_eta === 'string' && p.unlock_eta.trim());
+      }
+
+      function reportVisible() {
+        const r = state.report;
+        return paywallOn() && state.partnerJoined && Boolean(r && r.enabled === true && r.partner_joined === true);
+      }
+
+      function secretCopy(text) {
+        if (!paywallOn()) return text;
+        let t = String(text || '');
+        SECRET_COPY.forEach(([a, b]) => { t = t.split(a).join(b); });
+        return t;
+      }
+
+      function secretInfoKey() { return 'urisai_secret_info_seen_' + state.userId; }
+      function checkoutKey() { return 'urisai_checkout_opened_' + state.coupleCode; }
+
+      async function refreshPaywall(force) {
+        if (state.phase !== 'ready' || !state.coupleCode) return false;
+        if (!force && Date.now() - paywallCheckedAt < 30000) return false;
+        paywallCheckedAt = Date.now();
+        const before = JSON.stringify([state.paywall, state.report]);
+        const wasPaid = Boolean(state.report && state.report.paid);
+        const cfg = await sbFetchQuiet('rpc/get_paywall_config', { method: 'POST', body: '{}' });
+        state.paywall = cfg && cfg.enabled === true ? cfg : null;
+        if (paywallOn() && state.partnerJoined) {
+          const r = await sbFetchQuiet('rpc/my_report', { method: 'POST', body: '{}' });
+          state.report = r && r.enabled === true ? r : null;
+        } else {
+          state.report = null;
+          state.showReport = false;
+        }
+        if (reportVisible() && state.report.paid && !wasPaid) {
+          const k = 'urisai_report_opened_' + state.coupleCode;
+          try {
+            if (!localStorage.getItem(k)) { localStorage.setItem(k, '1'); showToast('두 분의 마음 날씨 리포트가 열렸어요 💛'); }
+          } catch (_e) {}
+        }
+        return before !== JSON.stringify([state.paywall, state.report]);
+      }
+
+      // 우리 온도 탭 — 우리 조합 카드 바로 아래
+      function renderReportTabCard() {
+        if (!reportVisible()) return '';
+        const r = state.report;
+        const name = r.partner_name || state.partnerName || '연인';
+        if (!teaserViewLogged) { teaserViewLogged = true; logEvent('report_teaser_view'); }
+        if (!r.ready) {
+          return `
+            <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
+              <div>
+                <p class="text-xs font-bold text-[#2D3436]">마음이 조금 더 쌓이면 열 수 있어요</p>
+                <p class="text-[11px] text-[#9AA5A9] mt-1">그동안 오늘의 미션으로 온도를 올려 봐요.</p>
+              </div>
+              <button type="button" data-action="switch-tab" data-tab="missions" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">오늘의 미션 하러 가기</button>
+            </div>`;
+        }
+        return `
+            <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
+              <div>
+                <p class="text-xs font-bold text-[#2D3436]">${esc('요즘 ' + name + '님 마음 날씨')}</p>
+                ${r.paid ? '' : `<p class="text-[11px] text-[#9AA5A9] mt-1">${esc(name + '님이 좋아하는 다정함 방식 하나를 먼저 보여드려요.')}</p>`}
+              </div>
+              <button type="button" data-action="open-report" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">${esc('요즘 ' + name + '님 마음 날씨 열어보기')}</button>
+            </div>`;
+      }
+
+      function renderReportModal() {
+        const r = state.report;
+        const name = r.partner_name || state.partnerName || '연인';
+        const way = COMBO_TYPES.find((t) => t.key === r.way_key);
+        const section = (label, inner) => `
+                <div class="rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-3.5">
+                  <p class="text-[11px] font-bold text-[#FF8A80]">${esc(label)}</p>
+                  ${inner}
+                </div>`;
+        let body = '';
+        if (way) body += section(name + '님이 좋아하는 다정함 방식', `<p class="text-sm font-extrabold text-[#2D3436] mt-1">${esc(way.desc)}</p>`);
+        if (r.paid && r.report) {
+          const topics = (Array.isArray(r.report.topics) ? r.report.topics : []).map((k) => NUDGE_LIBRARY[k] && NUDGE_LIBRARY[k].tagName).filter(Boolean);
+          if (topics.length) {
+            body += section('요즘 서운함 주제 TOP 3', `<ol class="mt-1.5 space-y-1">${topics.map((t, i) => `<li class="text-sm font-extrabold text-[#2D3436]">${i + 1}. ${esc(t)}</li>`).join('')}</ol>`);
+          }
+          const lib = NUDGE_LIBRARY[r.report.mission_key] || NUDGE_LIBRARY.default;
+          body += section('이번 주에 해 볼 미션', lib.drafts.slice(0, 2).map((d) => `
+                  <div class="mt-2 text-xs">
+                    <p class="font-bold text-[#2D3436]">${esc(d.title)}</p>
+                    <p class="text-[#4A5568] mt-0.5 leading-relaxed">${esc(d.message)}</p>
+                  </div>`).join(''));
+        } else {
+          // 잠긴 부분: 실제 내용 없이 회색 막대만 흐리게
+          const bar = (w) => `<div class="h-3 rounded-full bg-[#2D3436]/15" style="width:${w}%"></div>`;
+          body += `
+                <div class="relative rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-3.5 overflow-hidden" aria-hidden="true">
+                  <div class="space-y-2.5 blur-[3px] select-none">${[38, 82, 64, 30, 90, 72, 55].map(bar).join('')}</div>
+                  <div class="absolute inset-0 flex items-center justify-center"><span class="text-2xl">🔒</span></div>
+                </div>`;
+          body += renderPayArea();
+        }
+        return `
+            <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
+              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 shadow-2xl max-h-[92vh] overflow-y-auto space-y-3.5">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-base font-extrabold text-[#2D3436]">${esc('요즘 ' + name + '님 마음 날씨')}</h3>
+                  <button type="button" data-action="close-modals" class="text-sm font-bold text-[#636E72] px-2 py-1">닫기</button>
+                </div>
+                ${body}
+              </div>
+            </div>`;
+      }
+
+      function renderPayArea() {
+        const r = state.report; const p = state.paywall;
+        const btn = (label) => `<button type="button" data-action="pay-open" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">${label}</button>`;
+        if (!r.pay_code) {
+          return `
+                <div class="rounded-2xl border border-[#FF8A80] ring-2 ring-[#FF8A80]/15 p-4 space-y-3 text-center">
+                  <div>
+                    <p class="text-sm font-extrabold text-[#2D3436]">둘이 함께 열기</p>
+                    <p class="text-[11px] text-[#9AA5A9] mt-1">한 번 결제로 두 분 모두 봐요</p>
+                    <p class="text-xl font-extrabold text-[#2D3436] mt-2">${esc(Number(p.price_krw).toLocaleString('ko-KR') + '원')}</p>
+                  </div>
+                  ${btn('함께 열기')}
+                </div>`;
+        }
+        let opened = false;
+        try { opened = Boolean(localStorage.getItem(checkoutKey())); } catch (_e) {}
+        return `
+                <div class="rounded-2xl border border-[#FF8A80] ring-2 ring-[#FF8A80]/15 p-4 space-y-3">
+                  <p class="text-[11px] font-bold text-[#636E72]">결제 확인 코드</p>
+                  <div class="flex items-center justify-between gap-2 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 px-3 py-2.5">
+                    <span class="font-mono font-extrabold text-base text-[#2D3436] tracking-wider">${esc(r.pay_code)}</span>
+                    <button type="button" data-action="copy-pay-code" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
+                  </div>
+                  <p class="text-[11px] text-[#636E72] leading-relaxed">주문할 때 배송 메모 칸에 이 코드를 꼭 붙여 넣어 주세요. 이 코드로 두 분을 찾아서 열어 드려요.</p>
+                  ${btn('함께 열기')}
+                </div>
+                ${opened ? `
+                <div class="rounded-2xl bg-[#FFF8E7] border border-[#FFB74D]/50 p-4 text-center">
+                  <p class="text-sm font-extrabold text-[#2D3436]">결제 확인 중이에요</p>
+                  <p class="text-[11px] text-[#636E72] mt-1 leading-relaxed">${esc('확인되면 두 분 모두에게 바로 열려요. ' + p.unlock_eta)}</p>
+                </div>` : ''}`;
+      }
+
+      // 비밀방 — 첫 안내 카드 (한 번 확인하면 다시 안 뜸)
+      function renderSecretInfoCard() {
+        if (!paywallOn()) return '';
+        try { if (localStorage.getItem(secretInfoKey())) return ''; } catch (_e) { return ''; }
+        return `
+                <div class="animate-pop bg-white rounded-2xl p-4 border border-[#FF8A80] ring-2 ring-[#FF8A80]/15 shadow-sm space-y-3">
+                  <div>
+                    <p class="text-sm font-extrabold text-[#2D3436]">쓴 말은 그대로 보이지 않아요</p>
+                    <p class="text-xs text-[#636E72] mt-1.5 leading-relaxed">여기 쓴 문장은 연인에게 절대 보이지 않아요. 요즘 마음이 어느 쪽에 있는지만 주제로 정리돼서, 두 분이 함께 여는 리포트에 들어갈 수 있어요.</p>
+                  </div>
+                  <button type="button" data-action="secret-info-ok" class="w-full py-2.5 rounded-xl bg-[#2D3436] text-white text-xs font-extrabold">확인했어요</button>
+                </div>`;
+      }
+
+      // 비밀방 — 입력창 위 한 줄 (+ 눌러서 펼치기)
+      function renderSecretInfoLine() {
+        if (!paywallOn()) return '';
+        return `
+              <button type="button" data-action="secret-info-toggle" class="w-full text-left text-[11px] text-[#9AA5A9] pb-2">🔒 쓴 문장은 절대 보이지 않아요 · <span class="font-bold text-[#E0665B] underline underline-offset-2">리포트에는 뭐가 들어가나요?</span></button>
+              ${state.secretInfoOpen ? `
+              <div class="mb-2 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/20 px-3 py-2 text-[11px] text-[#636E72] leading-relaxed">
+                <p>들어가는 것: 요즘 서운함 주제 TOP 3, 좋아하는 다정함 방식</p>
+                <p>절대 안 들어가는 것: 쓴 문장 그대로, 인용, 날짜별 기록</p>
+              </div>` : ''}`;
       }
 
       // v10: 퍼널 카운터 (실패해도 무시)
@@ -956,7 +1147,7 @@
                     <div class="flex items-start gap-2 animate-pop">
                       <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
                       <div class="max-w-[85%] ${msg.type === 'notice' ? 'bg-[#FFF8E7] border-[#FFB74D]/50' : 'bg-white border-[#FF8A80]/15'} rounded-2xl rounded-tl-sm px-3.5 py-3 border shadow-sm">
-                        <p class="text-[13px] text-[#2D3436] leading-relaxed">${esc(msg.text)}</p>
+                        <p class="text-[13px] text-[#2D3436] leading-relaxed">${esc(secretCopy(msg.text))}</p>
                       </div>
                     </div>
                   `;
@@ -965,7 +1156,7 @@
                 const draft = drafts[msg.draftIdx || 0] || drafts[0];
                 const replyBubble = `
                       <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-sm">
-                        <p class="text-[13px] text-[#2D3436] leading-relaxed whitespace-pre-line">${esc(msg.empathy)}</p>
+                        <p class="text-[13px] text-[#2D3436] leading-relaxed whitespace-pre-line">${esc(secretCopy(msg.empathy))}</p>
                         ${msg.fallback ? '<p class="mt-1.5 text-[10px] text-[#B2BEC3]">AI 연결이 잠시 불안정해서 기본 답변을 보여드렸어요</p>' : ''}
                       </div>`;
                 if (!draft) {
@@ -1006,6 +1197,7 @@
                   </div>
                 `;
               }).join('')}
+              ${renderSecretInfoCard()}
               ${state.botTyping ? `
                 <div id="bot-typing" class="flex items-start gap-2 animate-pop">
                   <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
@@ -1015,6 +1207,7 @@
 
             <!-- 빠른 태그 + 입력창 -->
             <div class="bg-white border-t border-[#FF8A80]/15 px-3.5 pt-2.5 pb-3">
+              ${renderSecretInfoLine()}
               <div class="flex gap-1.5 overflow-x-auto pb-2 no-scrollbar">
                 ${QUICK_TAGS.map((t) => `
                   <button type="button" data-action="quick-tag" data-sample="${esc(t.sample)}" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#FFF9F5] text-[#2D3436] border border-[#FF8A80]/30 hover:bg-[#FF8A80] hover:text-white transition-colors">
@@ -1048,6 +1241,7 @@
             </div>
 
             ${renderComboTabCard()}
+            ${renderReportTabCard()}
 
             <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
               <p class="text-xs font-bold text-[#2D3436]">우리 커플 초대 코드</p>
@@ -1163,6 +1357,7 @@
       function renderModals() {
         let html = '';
         if (state.showCombo) html += renderComboModal();
+        if (state.showReport && reportVisible()) html += renderReportModal();
         if (state.showSettings) {
           html += `
             <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
@@ -1323,6 +1518,7 @@
       }
 
       async function enterCouple(c, toastMsg) {
+        paywallCheckedAt = 0;
         applyCouple(c);
         loadLocalForUser();
         if (state.role === 'B' && !localStorage.getItem(localKey())) state.activeTab = 'missions';
@@ -1394,6 +1590,7 @@
           state.activeTab = btn.getAttribute('data-tab') || 'saibot';
           saveState();
           render();
+          if (state.activeTab === 'warmth' && paywallOn() && await refreshPaywall(true)) render();
         } else if (action === 'quick-tag') {
           state.draftInput = btn.getAttribute('data-sample') || '';
           render();
@@ -1549,6 +1746,7 @@
           state.showInstallGuide = false;
           state.showLogoutConfirm = false;
           state.showCombo = false;
+          state.showReport = false;
           render();
         } else if (action === 'save-settings') {
           const myEl = document.getElementById('set-my-name');
@@ -1664,6 +1862,50 @@
             if (err && err.name === 'AbortError') return;
             showToast('잠시 후 다시 시도해 주세요');
           }
+        } else if (action === 'open-report') {
+          if (!reportVisible()) return;
+          hideToast();
+          logEvent('report_teaser_click');
+          state.showReport = true;
+          render();
+          if (await refreshPaywall(true)) render();
+          if (reportVisible()) logEvent(state.report.paid ? 'report_view' : 'paywall_view');
+        } else if (action === 'pay-open') {
+          if (!reportVisible() || state.report.paid) return;
+          if (!state.report.pay_code) {
+            if (state.busy) return;
+            state.busy = true;
+            logEvent('paywall_click');
+            try {
+              const c = await rpc('request_pay_code', {});
+              if (c && c.pay_code) state.report = Object.assign({}, state.report, { pay_code: c.pay_code, paid: Boolean(c.paid) });
+            } catch (_e) {
+              showToast('잠시 후 다시 시도해 주세요');
+            }
+            state.busy = false;
+            render();
+            return;
+          }
+          logEvent('paywall_checkout_open');
+          try { localStorage.setItem(checkoutKey(), '1'); } catch (_e) {}
+          window.open(state.paywall.checkout_url, '_blank', 'noopener');
+          render();
+        } else if (action === 'copy-pay-code') {
+          const code = state.report && state.report.pay_code;
+          if (!code) return;
+          logEvent('pay_code_copy');
+          try {
+            await navigator.clipboard.writeText(code);
+            showToast('복사 완료!');
+          } catch (_e) {
+            showToast(code);
+          }
+        } else if (action === 'secret-info-ok') {
+          try { localStorage.setItem(secretInfoKey(), '1'); } catch (_e) {}
+          render();
+        } else if (action === 'secret-info-toggle') {
+          state.secretInfoOpen = !state.secretInfoOpen;
+          render();
         } else if (action === 'copy-code') {
           try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
