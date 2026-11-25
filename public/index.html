@@ -50,7 +50,7 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v9.1";
+      const APP_VERSION = "v10";
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
@@ -188,7 +188,9 @@
           draftInput: '',
           showSettings: false,
           showLogoutConfirm: false,
-          showInstallGuide: false
+          showInstallGuide: false,
+          showCombo: false,
+          shareConsent: null // v10: 우리 조합 카드 공유 동의 (my_share_consent)
         };
       }
 
@@ -340,7 +342,9 @@
           badge: r.badge,
           message: r.message,
           time: '도착함',
-          accepted: Boolean(r.accepted)
+          accepted: Boolean(r.accepted),
+          createdAt: r.created_at || null,
+          acceptedAt: r.accepted_at || null
         }));
         const remoteIds = new Set(remote.map((m) => m.id));
         const localById = {};
@@ -403,10 +407,178 @@
             changed = true;
           }
         }
+        if (state.partnerJoined) {
+          const consent = await sbFetchQuiet('rpc/my_share_consent', { method: 'POST', body: JSON.stringify({ p_card_type: 'combo' }) });
+          if (consent !== null && applyShareConsent(consent && consent.id ? consent : null)) changed = true;
+        }
         if (changed) {
           saveState();
           if (!isUserTyping()) render();
         }
+      }
+
+      // v10: 공유 동의 상태 반영. 바뀌었으면 true
+      function applyShareConsent(next) {
+        const prev = state.shareConsent;
+        const key = (c) => (c ? c.id + ':' + c.status : '');
+        if (key(prev) === key(next)) return false;
+        state.shareConsent = next;
+        if (next && prev && prev.id === next.id && prev.status === 'pending' && next.requested_by_me) {
+          if (next.status === 'accepted') showToast('둘 다 좋대요! 이제 올릴 수 있어요 ✨');
+          if (next.status === 'declined') showToast('이번 건 둘만 보기로 했어요. 카드는 우리 온도 탭에 그대로 있어요.');
+        } else if (next && next.status === 'pending' && !next.requested_by_me && (!prev || prev.id !== next.id)) {
+          // 오늘의 미션 탭에서는 같은 문구의 동의 카드가 보이므로 토스트는 건너뛴다
+          if (state.activeTab !== 'missions') {
+            showToast((next.requester_name || state.partnerName || '연인') + '님이 우리 조합 카드를 올리고 싶대요 💌');
+          }
+        }
+        return true;
+      }
+
+      // v10: 퍼널 카운터 (실패해도 무시)
+      function logEvent(name) {
+        sbFetchQuiet('rpc/log_event', { method: 'POST', body: JSON.stringify({ p_event: name }) });
+      }
+
+      // ---- v10: 우리 조합 카드 ----
+      // 조합 이름 = "{A 유형} × {B 유형}" (A = 초대코드를 만든 사람). 두 폰이 같은 이름을 보도록
+      // 서버에서 받은 공용 데이터(daily_missions의 제목·본문·수락 시각, 커플 코드)만 쓴다. 비밀방 원문은 쓰지 않는다.
+      // 각 사람(역할)마다, 그 사람이 수락한 미션으로 8가지 유형 점수를 매긴다:
+      //   조용한 펭귄  : 행동형 미션 (안아/산책/걷/눈맞/폰/화면/티타임/톤)        +1 / 미션
+      //   수다 앵무새  : 대화형 미션 (말/톡/목소리/인사/한마디/문장/칭찬/안부/통화) +1 / 미션
+      //   꼼꼼한 다람쥐: 약속형 미션 (약속/기념일/계획/코스)                     +1 / 미션
+      //   포근한 곰    : 함께 보내는 시간 (같이/함께/데이트/집에서/노래/영상)      +1 / 미션
+      //   반짝 토끼    : 깜짝 표현 (선물/깜짝/스티커/편지/비밀/이벤트)           +1 / 미션
+      //   직진 강아지  : 도착 → 수락 중앙값 3시간 미만                          +2
+      //   느긋한 고양이: 도착 → 수락 중앙값 24시간 초과                         +2
+      //   든든한 거북이: 서로 다른 날 5일 이상 수락                              +2
+      // 최고점이 같으면 커플 코드 해시로 정한 순서로 고른다. 신호가 하나도 없으면 커플 코드 해시로 고른다.
+      // 진단 말(회피형 등)은 쓰지 않는다. 이름·설명 문구: Product Marketer (copy.md).
+      const COMBO_TYPES = [
+        { key: 'cat', name: '느긋한 고양이', desc: '마음 정리할 시간이 필요한 편이에요', words: [] },
+        { key: 'dog', name: '직진 강아지', desc: '서운하면 바로 말하고 바로 풀어요', words: [] },
+        { key: 'penguin', name: '조용한 펭귄', desc: '말보다 행동으로 챙겨요', words: ['안아', '산책', '걷', '눈맞', '눈 맞', '폰', '화면', '티타임', '톤'] },
+        { key: 'parrot', name: '수다 앵무새', desc: '다정함은 말로 확인하고 싶어요', words: ['말', '톡', '목소리', '인사', '한마디', '문장', '칭찬', '안부', '통화'] },
+        { key: 'squirrel', name: '꼼꼼한 다람쥐', desc: '작은 약속까지 기억해요', words: ['약속', '기념일', '계획', '코스'] },
+        { key: 'bear', name: '포근한 곰', desc: '같이 있는 시간이 제일 좋아요', words: ['같이', '함께', '데이트', '집에서', '노래', '영상'] },
+        { key: 'rabbit', name: '반짝 토끼', desc: '깜짝 표현에 약해요', words: ['선물', '깜짝', '스티커', '편지', '비밀', '이벤트'] },
+        { key: 'turtle', name: '든든한 거북이', desc: '천천히, 오래 꾸준해요', words: [] }
+      ];
+      const COMBO_MIN_MISSIONS = 3;
+
+      function hashStr(str) {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return h >>> 0;
+      }
+
+      function comboTypeFor(role, seed) {
+        const done = (state.missions || []).filter((m) => m.accepted && m.targetRole === role);
+        const score = COMBO_TYPES.map(() => 0);
+        done.forEach((m) => {
+          const text = String(m.title || '') + ' ' + String(m.message || '');
+          COMBO_TYPES.forEach((t, i) => { if (t.words.some((w) => text.indexOf(w) >= 0)) score[i] += 1; });
+        });
+        const lat = done
+          .map((m) => (Date.parse(m.acceptedAt) - Date.parse(m.createdAt)) / 3600000)
+          .filter((h) => Number.isFinite(h) && h >= 0)
+          .sort((a, b) => a - b);
+        if (lat.length) {
+          const med = lat[Math.floor(lat.length / 2)];
+          if (med < 3) score[1] += 2;
+          if (med > 24) score[0] += 2;
+        }
+        const days = new Set(done.map((m) => String(m.acceptedAt || '').slice(0, 10)).filter(Boolean));
+        if (days.size >= 5) score[7] += 2;
+        const n = COMBO_TYPES.length;
+        const best = Math.max.apply(null, score);
+        if (best <= 0) return COMBO_TYPES[seed % n];
+        for (let k = 0; k < n; k++) {
+          const i = (seed + k) % n;
+          if (score[i] === best) return COMBO_TYPES[i];
+        }
+        return COMBO_TYPES[0];
+      }
+
+      function comboInfo() {
+        const h = hashStr(String(state.coupleCode || ''));
+        const a = comboTypeFor('A', h % 8);
+        const b = comboTypeFor('B', (h >>> 3) % 8);
+        return { a: a, b: b, name: a.name + ' × ' + b.name, temp: state.warmthTemp.toFixed(1), count: state.completedCount };
+      }
+
+      let comboImage = { key: '', url: '', blob: null, busy: false };
+
+      function loadImg(src) {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => resolve(null);
+          img.src = src;
+        });
+      }
+
+      function roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      }
+
+      const CARD_FONT = '-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
+
+      // 1080x1920 (9:16) 카드 이미지
+      async function drawComboCard(info) {
+        const cv = document.createElement('canvas');
+        cv.width = 1080; cv.height = 1920;
+        const ctx = cv.getContext('2d');
+        const bg = ctx.createLinearGradient(0, 0, 0, 1920);
+        bg.addColorStop(0, '#FFF9F5'); bg.addColorStop(1, '#FFF0EE');
+        ctx.fillStyle = bg; ctx.fillRect(0, 0, 1080, 1920);
+        ctx.save();
+        ctx.shadowColor = 'rgba(45,52,54,0.08)'; ctx.shadowBlur = 60; ctx.shadowOffsetY = 16;
+        roundRect(ctx, 80, 280, 920, 1180, 72); ctx.fillStyle = '#FFFFFF'; ctx.fill();
+        ctx.restore();
+        roundRect(ctx, 80, 280, 920, 1180, 72); ctx.strokeStyle = 'rgba(255,138,128,0.25)'; ctx.lineWidth = 3; ctx.stroke();
+        ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = '#2D3436'; ctx.font = '800 88px ' + CARD_FONT; ctx.fillText(info.a.name, 540, 500);
+        ctx.fillStyle = '#636E72'; ctx.font = '500 38px ' + CARD_FONT; ctx.fillText(info.a.desc, 540, 572);
+        ctx.fillStyle = '#FF8A80'; ctx.font = '800 96px ' + CARD_FONT; ctx.fillText('×', 540, 715);
+        ctx.fillStyle = '#2D3436'; ctx.font = '800 88px ' + CARD_FONT; ctx.fillText(info.b.name, 540, 860);
+        ctx.fillStyle = '#636E72'; ctx.font = '500 38px ' + CARD_FONT; ctx.fillText(info.b.desc, 540, 932);
+        ctx.fillStyle = '#2D3436'; ctx.font = '800 58px ' + CARD_FONT; ctx.fillText('우리의 다정함 온도 ' + info.temp + '°C', 540, 1120);
+        roundRect(ctx, 200, 1172, 680, 28, 14); ctx.fillStyle = '#FFF0EE'; ctx.fill();
+        const pct = Math.min(100, Math.max(12, ((Number(info.temp) - 35) / 10) * 100)) / 100;
+        const bar = ctx.createLinearGradient(200, 0, 880, 0);
+        bar.addColorStop(0, '#FFAB91'); bar.addColorStop(1, '#FF8A80');
+        roundRect(ctx, 200, 1172, Math.max(28, 680 * pct), 28, 14); ctx.fillStyle = bar; ctx.fill();
+        ctx.fillStyle = '#636E72'; ctx.font = '600 42px ' + CARD_FONT; ctx.fillText('함께 달성한 다정함 미션 ' + info.count + '회', 540, 1300);
+        const icon = await loadImg(AVATAR_SRC);
+        if (icon) {
+          ctx.save(); roundRect(ctx, 474, 1580, 132, 132, 36); ctx.clip(); ctx.drawImage(icon, 474, 1580, 132, 132); ctx.restore();
+        }
+        ctx.fillStyle = '#2D3436'; ctx.font = '800 56px ' + CARD_FONT; ctx.fillText('우리사이', 540, 1800);
+        const blob = await new Promise((resolve) => cv.toBlob(resolve, 'image/png'));
+        return { url: cv.toDataURL('image/png'), blob: blob };
+      }
+
+      async function ensureComboImage() {
+        const info = comboInfo();
+        const key = [info.name, info.temp, info.count].join('|');
+        if (comboImage.key === key && comboImage.url) return comboImage;
+        if (comboImage.busy) return comboImage;
+        comboImage.busy = true;
+        try {
+          const out = await drawComboCard(info);
+          comboImage = { key: key, url: out.url, blob: out.blob, busy: false };
+        } catch (_e) {
+          comboImage.busy = false;
+        }
+        if (state.showCombo) render();
+        return comboImage;
       }
 
       function startSyncLoop() {
@@ -725,6 +897,7 @@
                 <div class="h-full bg-white rounded-full transition-all duration-500" style="width:${Math.min(100, Math.max(12, ((state.warmthTemp - 35) / 10) * 100))}%"></div>
               </div>
             </div>
+            ${renderConsentRequestCard()}
 
             <div class="flex items-center justify-between px-1 pt-1">
               <h2 class="text-sm font-extrabold text-[#2D3436]">오늘 도착한 커플 추천 팁</h2>
@@ -874,6 +1047,8 @@
               </div>
             </div>
 
+            ${renderComboTabCard()}
+
             <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
               <p class="text-xs font-bold text-[#2D3436]">우리 커플 초대 코드</p>
               <p class="text-[11px] text-[#9AA5A9]">${state.partnerJoined ? '두 분이 연결된 코드예요. 다른 사람은 들어올 수 없어요.' : '연인이 카카오로 로그인한 뒤 이 코드를 입력하면 연결돼요.'}</p>
@@ -882,6 +1057,8 @@
                 <button type="button" data-action="copy-code" class="px-3 py-1.5 rounded-lg bg-[#FFF9F5] border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
               </div>
             </div>
+
+            ${renderQuizTabCard()}
 
             <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm">
               <h3 class="text-xs font-extrabold text-[#2D3436] mb-2">내가 보낸 다정함 신호 (${mySent.length}건)</h3>
@@ -897,8 +1074,95 @@
         `;
       }
 
+      // v10: 우리 온도 탭 — 우리 조합 카드 (리포트 히어로 바로 아래)
+      function renderComboTabCard() {
+        if (!state.partnerJoined) return '';
+        const left = COMBO_MIN_MISSIONS - state.completedCount;
+        return `
+            <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
+              <div>
+                <p class="text-xs font-bold text-[#2D3436]">우리 둘은 어떤 조합일까요?</p>
+                <p class="text-[11px] text-[#9AA5A9] mt-1">${left > 0 ? `미션 ${left}번만 더 하면 우리 조합이 나와요` : '함께한 미션으로 두 분 조합을 알려드려요.'}</p>
+              </div>
+              ${left > 0 ? `
+                <button type="button" data-action="switch-tab" data-tab="missions" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">오늘의 미션 하러 가기</button>
+              ` : `
+                <button type="button" data-action="open-combo" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">우리 조합 보기</button>
+              `}
+            </div>`;
+      }
+
+      // v10: 우리 온도 탭 — 서로 맞히기 테스트 (연인 코드 카드 아래)
+      function renderQuizTabCard() {
+        if (!state.partnerJoined) return '';
+        return `
+            <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
+              <div>
+                <p class="text-xs font-bold text-[#2D3436]">연인은 나를 얼마나 알까요?</p>
+                <p class="text-[11px] text-[#9AA5A9] mt-1">10문제로 맞혀 보고, 친구 커플이랑 점수를 겨뤄 봐요.</p>
+              </div>
+              <button type="button" data-action="open-quiz" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">친구 커플이랑 맞히기 대결</button>
+            </div>`;
+      }
+
+      // v10: 미션 탭 — 연인이 보낸 공유 동의 요청
+      function renderConsentRequestCard() {
+        const c = state.shareConsent;
+        if (!c || c.status !== 'pending' || c.requested_by_me) return '';
+        return `
+            <div class="animate-pop bg-white rounded-2xl p-4 border border-[#FF8A80] ring-2 ring-[#FF8A80]/15 shadow-[0_4px_16px_rgba(45,52,54,0.05)]">
+              <button type="button" data-action="open-combo" class="w-full text-left text-[15px] font-extrabold text-[#2D3436]">${esc((c.requester_name || state.partnerName) + '님이 우리 조합 카드를 올리고 싶대요 💌')}</button>
+              ${consentAnswerButtons(c)}
+            </div>`;
+      }
+
+      function consentAnswerButtons(c) {
+        return `
+              <div class="mt-3.5 pt-3 border-t border-[#2D3436]/5 flex gap-2">
+                <button type="button" data-action="respond-share" data-id="${esc(c.id)}" data-accept="1" class="flex-1 py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">좋아요</button>
+                <button type="button" data-action="respond-share" data-id="${esc(c.id)}" data-accept="0" class="flex-1 py-2.5 rounded-xl bg-white border border-[#FF8A80]/30 text-[#E0665B] text-xs font-extrabold">둘만 볼래요</button>
+              </div>`;
+      }
+
+      function renderComboModal() {
+        const c = state.shareConsent;
+        let action = '';
+        if (c && c.status === 'accepted') {
+          action = `
+                <p class="text-sm font-extrabold text-[#2D3436] text-center">둘 다 좋대요! 이제 올릴 수 있어요 ✨</p>
+                <div>
+                  <button type="button" data-action="share-combo-story" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">스토리에 올리기</button>
+                  <p class="text-[11px] text-[#9AA5A9] text-center mt-1.5">공유 창이 뜨면 인스타그램을 골라 스토리에 올려 주세요.</p>
+                </div>
+                <button type="button" data-action="share-combo-kakao" class="w-full py-2.5 rounded-xl bg-white border border-[#FF8A80]/30 text-[#E0665B] text-xs font-extrabold">카톡으로 보내기</button>`;
+        } else if (c && c.status === 'pending' && !c.requested_by_me) {
+          action = `
+                <p class="text-sm font-extrabold text-[#2D3436] text-center">${esc((c.requester_name || state.partnerName) + '님이 우리 조합 카드를 올리고 싶대요 💌')}</p>
+                ${consentAnswerButtons(c)}`;
+        } else {
+          const pending = c && c.status === 'pending';
+          action = `
+                ${c && c.status === 'declined' ? '<p class="text-xs font-bold text-[#636E72] text-center leading-relaxed">이번 건 둘만 보기로 했어요. 카드는 우리 온도 탭에 그대로 있어요.</p>' : ''}
+                <button type="button" data-action="request-share" ${pending ? 'disabled' : ''} class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all ${pending ? 'opacity-60' : ''}">올려도 될지 물어보기</button>`;
+        }
+        return `
+            <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
+              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 shadow-2xl max-h-[92vh] overflow-y-auto space-y-3.5">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-base font-extrabold text-[#2D3436]">우리 둘은 어떤 조합일까요?</h3>
+                  <button type="button" data-action="close-modals" class="text-sm font-bold text-[#636E72] px-2 py-1">닫기</button>
+                </div>
+                ${comboImage.url
+                  ? `<img id="combo-preview" src="${comboImage.url}" alt="${esc(comboInfo().name)}" class="block mx-auto rounded-2xl border border-[#FF8A80]/20 shadow-sm" style="height:min(48vh,400px);aspect-ratio:9/16" />`
+                  : `<div class="mx-auto rounded-2xl bg-[#FFF0EE] animate-pulse" style="height:min(48vh,400px);aspect-ratio:9/16"></div>`}
+                ${action}
+              </div>
+            </div>`;
+      }
+
       function renderModals() {
         let html = '';
+        if (state.showCombo) html += renderComboModal();
         if (state.showSettings) {
           html += `
             <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
@@ -1284,6 +1548,7 @@
           state.showSettings = false;
           state.showInstallGuide = false;
           state.showLogoutConfirm = false;
+          state.showCombo = false;
           render();
         } else if (action === 'save-settings') {
           const myEl = document.getElementById('set-my-name');
@@ -1328,6 +1593,77 @@
           state.phase = 'signedOut';
           render();
           showToast('로그아웃했어요. 카카오로 다시 시작하면 기록이 돌아와요.');
+        } else if (action === 'open-combo') {
+          hideToast();
+          state.showCombo = true;
+          render();
+          ensureComboImage();
+          logEvent('combo_view');
+        } else if (action === 'open-quiz') {
+          location.href = './quiz.html';
+        } else if (action === 'request-share') {
+          if (btn.disabled) return;
+          btn.disabled = true;
+          try {
+            const c = await rpc('request_share_consent', { p_card_type: 'combo' });
+            applyShareConsent(c && c.id ? c : null);
+            logEvent('combo_share_request');
+            render();
+            showToast('연인에게 물어봤어요 💌');
+          } catch (_e) {
+            btn.disabled = false;
+            showToast('잠시 후 다시 시도해 주세요');
+          }
+        } else if (action === 'respond-share') {
+          const id = btn.getAttribute('data-id');
+          const accept = btn.getAttribute('data-accept') === '1';
+          try {
+            const c = await rpc('respond_share_consent', { p_id: id, p_accept: accept });
+            state.shareConsent = c && c.id ? c : null;
+            render();
+            showToast(accept ? '둘 다 좋대요! 이제 올릴 수 있어요 ✨' : '이번 건 둘만 보기로 했어요. 카드는 우리 온도 탭에 그대로 있어요.');
+          } catch (_e) {
+            showToast('잠시 후 다시 시도해 주세요');
+          }
+        } else if (action === 'share-combo-story') {
+          if (!state.shareConsent || state.shareConsent.status !== 'accepted') return;
+          const img = await ensureComboImage();
+          if (!img.blob) { showToast('잠시 후 다시 시도해 주세요'); return; }
+          const file = new File([img.blob], 'urisai-combo.png', { type: 'image/png' });
+          try {
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({ files: [file] });
+            } else {
+              const a = document.createElement('a');
+              a.href = img.url;
+              a.download = 'urisai-combo.png';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            }
+            logEvent('combo_shared');
+          } catch (err) {
+            if (err && err.name === 'AbortError') return;
+            showToast('잠시 후 다시 시도해 주세요');
+          }
+        } else if (action === 'share-combo-kakao') {
+          // 카카오 SDK 공유는 나중에. 지금은 공유 창(카톡 선택) + 링크
+          if (!state.shareConsent || state.shareConsent.status !== 'accepted') return;
+          const info = comboInfo();
+          const url = location.origin + location.pathname;
+          const text = info.name + '\n우리의 다정함 온도 ' + info.temp + '°C\n함께 달성한 다정함 미션 ' + info.count + '회';
+          try {
+            if (navigator.share) {
+              await navigator.share({ title: '우리사이', text: text, url: url });
+            } else {
+              await navigator.clipboard.writeText(text + '\n' + url);
+              showToast('복사 완료!');
+            }
+            logEvent('combo_shared');
+          } catch (err) {
+            if (err && err.name === 'AbortError') return;
+            showToast('잠시 후 다시 시도해 주세요');
+          }
         } else if (action === 'copy-code') {
           try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
