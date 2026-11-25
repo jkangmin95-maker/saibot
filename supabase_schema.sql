@@ -1,5 +1,4 @@
--- 우리사이(Urisai) 실시간 2인 커플 동기화용 Supabase SQL 스키마
--- Supabase 대시보드 > SQL Editor에 전체 복사 후 [Run] 버튼을 누르세요.
+-- Idempotent schema + grants for the 우리사이 PWA (anon REST access)
 
 create table if not exists public.couples (
   code text primary key,
@@ -20,8 +19,6 @@ create table if not exists public.daily_missions (
   created_at timestamptz not null default now()
 );
 
--- 비밀 감정 기록은 본인 기기(localStorage)에만 보관하거나,
--- 서버 저장이 필요할 경우 아래 테이블에 Auth UID 기반 RLS를 적용합니다.
 create table if not exists public.secret_emotions (
   id uuid primary key default gen_random_uuid(),
   couple_code text not null references public.couples(code) on delete cascade,
@@ -31,11 +28,33 @@ create table if not exists public.secret_emotions (
   created_at timestamptz not null default now()
 );
 
--- 빠른 프로토타입 오픈용 익명 접근 정책 (정식 출시 시 Supabase Auth UID 정책으로 강화 권장)
 alter table public.couples enable row level security;
 alter table public.daily_missions enable row level security;
 alter table public.secret_emotions enable row level security;
 
+drop policy if exists "couples_anon_all" on public.couples;
+drop policy if exists "missions_anon_all" on public.daily_missions;
+drop policy if exists "emotions_anon_insert" on public.secret_emotions;
+
 create policy "couples_anon_all" on public.couples for all using (true) with check (true);
 create policy "missions_anon_all" on public.daily_missions for all using (true) with check (true);
 create policy "emotions_anon_insert" on public.secret_emotions for insert with check (true);
+
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on public.couples to anon, authenticated, service_role;
+grant select, insert, update, delete on public.daily_missions to anon, authenticated, service_role;
+grant select, insert, update, delete on public.secret_emotions to anon, authenticated, service_role;
+
+-- App uses REST polling, not postgres_changes. Publication add is optional and
+-- ignored if the table is already a member.
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.couples;
+  exception when duplicate_object then null;
+  end;
+  begin
+    alter publication supabase_realtime add table public.daily_missions;
+  exception when duplicate_object then null;
+  end;
+end $$;

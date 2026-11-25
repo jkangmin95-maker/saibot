@@ -46,6 +46,10 @@
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_KEY = "urisai_mobile_state_v1";
 
+      // Client-safe defaults (Supabase anon public key). Settings can override.
+      const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
+      const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGlnc3JwYXhpdGxwdXdiZGp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU1NzgxNzEsImV4cCI6MjExMTE1NDE3MX0.9VRYSaXhXSjCjvcVO60C6-1TVM47yG9rprFegw3ZW5A";
+
       // PWA Service Worker 등록 (HTTPS 호스팅 환경에서만 동작)
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
         window.addEventListener('load', () => {
@@ -177,19 +181,27 @@
           draftInput: '',
           showSettings: false,
           showInstallGuide: false,
-          supabaseUrl: '',
-          supabaseKey: '',
+          supabaseUrl: DEFAULT_SUPABASE_URL,
+          supabaseKey: DEFAULT_SUPABASE_ANON_KEY,
           geminiKey: '',
-          syncStatus: '로컬 체험 모드'
+          syncStatus: 'Supabase 연동됨'
         };
       }
 
       function loadState() {
         try {
           const raw = localStorage.getItem(STORAGE_KEY);
-          if (!raw) return defaultState();
+          const base = defaultState();
+          if (!raw) return base;
           const parsed = JSON.parse(raw);
-          return Object.assign(defaultState(), parsed);
+          const s = Object.assign(base, parsed);
+          // Keep built-in project defaults if a previous visit saved empty keys
+          if (!s.supabaseUrl) s.supabaseUrl = DEFAULT_SUPABASE_URL;
+          if (!s.supabaseKey) s.supabaseKey = DEFAULT_SUPABASE_ANON_KEY;
+          if (s.supabaseUrl && s.supabaseKey && s.syncStatus === '로컬 체험 모드') {
+            s.syncStatus = 'Supabase 연동됨';
+          }
+          return s;
         } catch (_e) {
           return defaultState();
         }
@@ -276,13 +288,13 @@
 
       async function ensureCoupleRow() {
         if (!state.supabaseUrl || !state.supabaseKey) return;
-        await sbFetch('couples', {
+        await sbFetch('couples?on_conflict=code', {
           method: 'POST',
           headers: {
             apikey: state.supabaseKey,
             Authorization: 'Bearer ' + state.supabaseKey,
             'Content-Type': 'application/json',
-            Prefer: 'resolution=ignore-duplicates'
+            Prefer: 'resolution=ignore-duplicates,return=representation'
           },
           body: JSON.stringify({
             code: state.coupleCode,
@@ -695,24 +707,30 @@
       }
 
       // 이벤트 위임
+      function readOnboardingFields() {
+        const myEl = document.getElementById('ob-my-name');
+        const ptEl = document.getElementById('ob-partner-name');
+        const cdEl = document.getElementById('ob-code');
+        if (myEl && myEl.value.trim()) state.myName = myEl.value.trim();
+        if (ptEl && ptEl.value.trim()) state.partnerName = ptEl.value.trim();
+        if (cdEl && cdEl.value.trim()) state.coupleCode = cdEl.value.trim().toUpperCase();
+      }
+
       document.addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const action = btn.getAttribute('data-action');
 
         if (action === 'regen-code') {
+          readOnboardingFields();
           state.coupleCode = randomCoupleCode();
           render();
         } else if (action === 'pick-role') {
+          readOnboardingFields();
           state.role = btn.getAttribute('data-role') || 'A';
           render();
         } else if (action === 'start-app') {
-          const myEl = document.getElementById('ob-my-name');
-          const ptEl = document.getElementById('ob-partner-name');
-          const cdEl = document.getElementById('ob-code');
-          if (myEl && myEl.value.trim()) state.myName = myEl.value.trim();
-          if (ptEl && ptEl.value.trim()) state.partnerName = ptEl.value.trim();
-          if (cdEl && cdEl.value.trim()) state.coupleCode = cdEl.value.trim().toUpperCase();
+          readOnboardingFields();
           state.onboarded = true;
           saveState();
           await ensureCoupleRow();
