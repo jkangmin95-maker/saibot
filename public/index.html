@@ -12,6 +12,20 @@
   <link rel="icon" href="./icon-192.png" />
   <title>우리사이 - 커플 감정 번역 & 다정함 코칭</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script>
+    // 디자인 토큰: 그림자 3단계 (슬레이트/코랄 틴트, 낮은 농도)
+    tailwind.config = {
+      theme: {
+        extend: {
+          boxShadow: {
+            card: '0 2px 12px rgba(45,52,54,0.06)',
+            pop: '0 16px 40px rgba(45,52,54,0.16)',
+            cta: '0 6px 16px rgba(194,69,59,0.22)'
+          }
+        }
+      }
+    };
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2/dist/umd/supabase.js" integrity="sha384-A97u3Qnt9GZHURO9YJZRe7VQgGUeFzcv6I1oIGnUTxQrCxnpQMwR0/G8F2zt9abZ" crossorigin="anonymous"></script>
   <style>
     * { -webkit-tap-highlight-color: transparent; }
@@ -35,6 +49,10 @@
       100% { opacity: 1; transform: translateY(0) scale(1); }
     }
     .animate-pop { animation: popIn 0.25s ease-out forwards; }
+    @media (prefers-reduced-motion: reduce) {
+      .animate-pop, .animate-pulse { animation: none !important; opacity: 1; transform: none; }
+      *, *::before, *::after { transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+    }
   </style>
 </head>
 <body class="min-h-screen flex justify-center bg-[#F4ECE6]">
@@ -43,14 +61,14 @@
     <div id="app" class="w-full h-full bg-[#FFF9F5] flex flex-col overflow-hidden">
       <!-- JS가 마운트 -->
     </div>
-    <div id="toast" class="absolute left-1/2 -translate-x-1/2 z-[60] hidden w-[90%] bg-[#2D3436] text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl text-center" style="bottom: max(11.75rem, calc(env(safe-area-inset-bottom) + 10.5rem))"></div>
+    <div id="toast" class="absolute left-1/2 -translate-x-1/2 z-[60] hidden w-[90%] bg-[#2D3436] text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-pop text-center" style="bottom: max(11.75rem, calc(env(safe-area-inset-bottom) + 10.5rem))"></div>
   </div>
 
   <script>
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v9.1";
+      const APP_VERSION = "v9.2";
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
@@ -86,60 +104,60 @@
           tagName: '스마트폰 집중',
           empathy: '함께 있는 소중한 시간인데 나보다 화면을 더 오래 보는 것 같으면 당연히 마음이 헛헛하고 속상하죠. 그 서운함, 제가 조용히 안아드릴게요. 상대방이 전혀 눈치채지 못하게 오늘 밤 눈 맞추는 시간을 자연스럽게 만들어 볼까요?',
           drafts: [
-            { title: '식사 시간 눈맞춤 타임', badge: '오늘의 데일리 미션', message: '다음에 같이 밥 먹을 땐 두 분 다 폰을 가방 속에 쏙 넣어두고, 서로의 표정을 보며 천천히 대화해 보는 건 어떨까요?' },
-            { title: '함께 걷는 10분 산책', badge: '커플 추천 팁', message: '오늘 저녁, 잠깐이라도 같이 걸어볼까요? 폰은 주머니에 두고 손 잡고 오늘 있었던 일만 이야기해 보세요.' },
-            { title: '화면 대신 눈 맞추기', badge: '오늘의 데일리 미션', message: '집에 도착하면 먼저 폰을 내려놓고, 상대방 얼굴을 보며 "오늘 하루 어땠어?" 하고 물어봐 주세요.' },
-            { title: '같은 영상 같이 보기', badge: '다정함 리마인더', message: '각자 폰을 보기보다, 한 화면으로 재밌는 영상 하나를 골라 나란히 앉아 같이 웃어보는 건 어때요?' }
+            { title: '식사 시간 눈맞춤 타임', badge: '오늘의 미션', message: '다음에 같이 밥 먹을 땐 두 분 다 폰을 가방 속에 쏙 넣어두고, 서로의 표정을 보며 천천히 대화해 보는 건 어떨까요?' },
+            { title: '함께 걷는 10분 산책', badge: '함께하는 미션', message: '오늘 저녁, 잠깐이라도 같이 걸어볼까요? 폰은 주머니에 두고 손 잡고 오늘 있었던 일만 이야기해 보세요.' },
+            { title: '화면 대신 눈 맞추기', badge: '오늘의 미션', message: '집에 도착하면 먼저 폰을 내려놓고, 상대방 얼굴을 보며 "오늘 하루 어땠어?" 하고 물어봐 주세요.' },
+            { title: '같은 영상 같이 보기', badge: '다정함 미션', message: '각자 폰을 보기보다, 한 화면으로 재밌는 영상 하나를 골라 나란히 앉아 같이 웃어보는 건 어때요?' }
           ]
         },
         contact: {
           tagName: '연락 빈도',
           empathy: '기다리는 시간은 실제보다 훨씬 길게 느껴지잖아요. 바쁠 거라 이해하려 해도 막상 연락이 뜸하면 마음이 작아질 수밖에 없어요. 부담 주지 않으면서도 반가운 연락이 먼저 오도록 살짝 신호를 띄워볼게요.',
           drafts: [
-            { title: '하늘 사진 한 장 & 짧은 안부', badge: '오늘의 데일리 미션', message: '바쁜 하루 중 딱 10초! 지금 보이는 풍경이나 마시는 커피 사진 한 장과 함께 "지금 문득 네 생각났어"라고 먼저 톡 보내보는 건 어때요?' },
-            { title: '퇴근 전 1분 목소리 선물', badge: '커플 추천 팁', message: '메시지 대신 오늘 저녁엔 짧은 음성 메시지나 1분 통화로 "오늘 하루 어땠어?" 하고 다정하게 안부를 물어봐 주세요!' },
-            { title: '점심때 짧은 응원 톡', badge: '오늘의 데일리 미션', message: '점심시간에 "맛있는 거 먹고 힘내!" 한 줄만 먼저 보내보세요. 짧아도 기다리는 사람에겐 큰 힘이 돼요.' },
-            { title: '잠들기 전 잘 자요 인사', badge: '다정함 리마인더', message: '오늘이 끝나기 전에 "오늘도 수고했어, 잘 자"라는 인사를 먼저 건네 보세요.' }
+            { title: '하늘 사진 한 장 & 짧은 안부', badge: '오늘의 미션', message: '바쁜 하루 중 딱 10초! 지금 보이는 풍경이나 마시는 커피 사진 한 장과 함께 "지금 문득 네 생각났어"라고 먼저 톡 보내보는 건 어때요?' },
+            { title: '퇴근 전 1분 목소리 선물', badge: '함께하는 미션', message: '메시지 대신 오늘 저녁엔 짧은 음성 메시지나 1분 통화로 "오늘 하루 어땠어?" 하고 다정하게 안부를 물어봐 주세요!' },
+            { title: '점심때 짧은 응원 톡', badge: '오늘의 미션', message: '점심시간에 "맛있는 거 먹고 힘내!" 한 줄만 먼저 보내보세요. 짧아도 기다리는 사람에겐 큰 힘이 돼요.' },
+            { title: '잠들기 전 잘 자요 인사', badge: '다정함 미션', message: '오늘이 끝나기 전에 "오늘도 수고했어, 잘 자"라는 인사를 먼저 건네 보세요.' }
           ]
         },
         affection: {
           tagName: '표현 부족',
           empathy: '마음이야 알지만 가끔은 말과 행동으로 확인받고 싶을 때가 있잖아요. 상대방이 오늘 자연스럽게 애정을 듬뿍 표현할 수 있는 따뜻한 미션을 보내볼게요.',
           drafts: [
-            { title: '오늘의 진심 한 문장 전하기', badge: '오늘의 데일리 미션', message: '익숙함에 잠시 아껴두었던 말, 오늘은 꼭 꺼내볼까요? 상대방의 좋은 점 한 가지를 콕 집어 "난 너의 이런 점이 참 좋아"라고 말해 주세요!' },
-            { title: '말없이 5초 꼭 안아주기', badge: '커플 추천 팁', message: '오늘 만나면 아무 말 없이 5초만 꽉 안아주는 건 어때요? 백 마디 말보다 따뜻한 포옹 한 번이 마음을 가장 빠르게 채워준대요.' },
-            { title: '칭찬 한 스푼 더하기', badge: '오늘의 데일리 미션', message: '오늘 상대방의 옷이나 표정, 작은 배려 하나를 발견하고 "그게 정말 좋더라"고 구체적으로 칭찬해 보세요.' },
-            { title: '손편지 같은 긴 톡', badge: '다정함 리마인더', message: '이모티콘 대신, 요즘 고마웠던 일을 세 문장으로 풀어 적어 보내보세요. 마음이 그대로 전해질 거예요.' }
+            { title: '오늘의 진심 한 문장 전하기', badge: '오늘의 미션', message: '익숙함에 잠시 아껴두었던 말, 오늘은 꼭 꺼내볼까요? 상대방의 좋은 점 한 가지를 콕 집어 "난 너의 이런 점이 참 좋아"라고 말해 주세요!' },
+            { title: '말없이 5초 꼭 안아주기', badge: '함께하는 미션', message: '오늘 만나면 아무 말 없이 5초만 꽉 안아주는 건 어때요? 백 마디 말보다 따뜻한 포옹 한 번이 마음을 가장 빠르게 채워준대요.' },
+            { title: '칭찬 한 스푼 더하기', badge: '오늘의 미션', message: '오늘 상대방의 옷이나 표정, 작은 배려 하나를 발견하고 "그게 정말 좋더라"고 구체적으로 칭찬해 보세요.' },
+            { title: '손편지 같은 긴 톡', badge: '다정함 미션', message: '이모티콘 대신, 요즘 고마웠던 일을 세 문장으로 풀어 적어 보내보세요. 마음이 그대로 전해질 거예요.' }
           ]
         },
         date: {
           tagName: '데이트 코스',
           empathy: '매번 먼저 고민하고 준비하다 보면 나만 애쓰는 기분이 들기 마련이에요. 이번엔 상대방이 설레는 마음으로 먼저 데이트 아이디어를 꺼낼 수 있게 슬쩍 영감을 불어넣어 줄게요!',
           drafts: [
-            { title: '이번 주말 비밀 코스 제안하기', badge: '데이트 추천 미션', message: '이번 데이트는 내가 먼저 깜짝 제안 어때요? 가보고 싶었던 맛집이나 예쁜 카페 2곳을 골라 "우리 여기 갈까?" 하고 먼저 물어봐 주세요!' },
-            { title: '우리만의 소확행 산책 루트', badge: '커플 추천 팁', message: '거창한 계획이 아니어도 좋아요. 이번 주엔 연인과 함께 걷고 싶은 동네나 디저트 가게를 하나 정해서 먼저 데이트 신청을 해보세요!' },
-            { title: '집에서도 데이트 기분', badge: '오늘의 데일리 미션', message: '나가기 어렵다면 집에서 좋아하는 음식과 조명만 바꿔 작은 데이트 분위기를 만들어 보는 건 어때요?' },
-            { title: '다음 약속 먼저 잡기', badge: '다정함 리마인더', message: '다음 쉬는 날 일정을 열어보고 "그날은 우리 시간으로 남겨두자"며 먼저 약속을 잡아 보세요.' }
+            { title: '이번 주말 비밀 코스 제안하기', badge: '데이트 미션', message: '이번 데이트는 내가 먼저 깜짝 제안 어때요? 가보고 싶었던 맛집이나 예쁜 카페 2곳을 골라 "우리 여기 갈까?" 하고 먼저 물어봐 주세요!' },
+            { title: '우리만의 소확행 산책 루트', badge: '함께하는 미션', message: '거창한 계획이 아니어도 좋아요. 이번 주엔 연인과 함께 걷고 싶은 동네나 디저트 가게를 하나 정해서 먼저 데이트 신청을 해보세요!' },
+            { title: '집에서도 데이트 기분', badge: '오늘의 미션', message: '나가기 어렵다면 집에서 좋아하는 음식과 조명만 바꿔 작은 데이트 분위기를 만들어 보는 건 어때요?' },
+            { title: '다음 약속 먼저 잡기', badge: '다정함 미션', message: '다음 쉬는 날 일정을 열어보고 "그날은 우리 시간으로 남겨두자"며 먼저 약속을 잡아 보세요.' }
           ]
         },
         tone: {
           tagName: '말투 서운함',
           empathy: '가까운 사이라서 더 쉽게 상처받는 게 말투인 것 같아요. 상대방이 오늘 부드러운 온도로 먼저 말을 걸어올 수 있게 다정한 대화 넛지를 준비했어요.',
           drafts: [
-            { title: '다정한 말끝 쿠션 미션', badge: '오늘의 데일리 미션', message: '피곤한 날일수록 말끝에 다정함을 한 스푼 더해보는 건 어때요? 오늘 대화할 땐 "고마워", "그랬구나~" 같은 따뜻한 리액션을 한 번 더 건네보세요.' },
-            { title: '오늘 고마웠던 일 하나 말하기', badge: '커플 추천 팁', message: '잠시 숨을 고르고 연인에게 "오늘 네 덕분에 힘이 났어" 혹은 "항상 내 편 되어줘서 고마워" 하고 부드럽게 먼저 말을 걸어보는 건 어떨까요?' },
-            { title: '먼저 사과보다 다정한 재시작', badge: '오늘의 데일리 미션', message: '조금 쌀쌀했던 공기가 있다면, "나 너랑 얘기하니까 마음이 풀려"라고 먼저 부드럽게 대화를 열어보세요.' },
-            { title: '목소리 톤 한 단계 낮추기', badge: '다정함 리마인더', message: '오늘 한 번은 일부러 느리고 부드러운 목소리로 "많이 피곤했지?" 하고 먼저 공감해 주세요.' }
+            { title: '다정한 말끝 쿠션 미션', badge: '오늘의 미션', message: '피곤한 날일수록 말끝에 다정함을 한 스푼 더해보는 건 어때요? 오늘 대화할 땐 "고마워", "그랬구나~" 같은 따뜻한 리액션을 한 번 더 건네보세요.' },
+            { title: '오늘 고마웠던 일 하나 말하기', badge: '함께하는 미션', message: '잠시 숨을 고르고 연인에게 "오늘 네 덕분에 힘이 났어" 혹은 "항상 내 편 되어줘서 고마워" 하고 부드럽게 먼저 말을 걸어보는 건 어떨까요?' },
+            { title: '먼저 사과보다 다정한 재시작', badge: '오늘의 미션', message: '조금 쌀쌀했던 공기가 있다면, "나 너랑 얘기하니까 마음이 풀려"라고 먼저 부드럽게 대화를 열어보세요.' },
+            { title: '목소리 톤 한 단계 낮추기', badge: '다정함 미션', message: '오늘 한 번은 일부러 느리고 부드러운 목소리로 "많이 피곤했지?" 하고 먼저 공감해 주세요.' }
           ]
         },
         default: {
           tagName: '마음 돌보기',
           empathy: '말로 꺼내기 쉽지 않은 속마음을 솔직하게 들려줘서 고마워요. 상대방이 오늘 유난히 다정하게 다가올 수 있도록 자연스러운 미션을 만들어 드릴게요.',
           drafts: [
-            { title: '오늘의 다정함 10분 티타임', badge: '오늘의 데일리 미션', message: '오늘 저녁엔 따뜻한 음료 한 잔과 함께 "요즘 혹시 힘든 일 없어?" 하고 연인의 마음을 먼저 토닥여 주는 10분을 가져보는 건 어때요?' },
-            { title: '서로의 하루를 안아주는 한마디', badge: '다정함 리마인더', message: '오늘 하루가 끝나기 전에 "오늘도 수고 많았어, 네가 있어 참 다행이야"라는 말로 따뜻한 마무리를 선물해 보세요.' },
-            { title: '작은 응원 스티커 선물', badge: '커플 추천 팁', message: '말없이 힘이 되는 이모티콘이나 짧은 음성 메시지로 "난 네 편이야"를 전해 보세요.' },
-            { title: '같이 듣고 싶은 노래 하나', badge: '오늘의 데일리 미션', message: '상대방이 좋아할 것 같은 노래 하나를 골라 "이거 듣다 네가 생각났어"와 함께 보내보는 건 어때요?' }
+            { title: '오늘의 다정함 10분 티타임', badge: '오늘의 미션', message: '오늘 저녁엔 따뜻한 음료 한 잔과 함께 "요즘 혹시 힘든 일 없어?" 하고 연인의 마음을 먼저 토닥여 주는 10분을 가져보는 건 어때요?' },
+            { title: '서로의 하루를 안아주는 한마디', badge: '다정함 미션', message: '오늘 하루가 끝나기 전에 "오늘도 수고 많았어, 네가 있어 참 다행이야"라는 말로 따뜻한 마무리를 선물해 보세요.' },
+            { title: '작은 응원 스티커 선물', badge: '함께하는 미션', message: '말없이 힘이 되는 이모티콘이나 짧은 음성 메시지로 "난 네 편이야"를 전해 보세요.' },
+            { title: '같이 듣고 싶은 노래 하나', badge: '오늘의 미션', message: '상대방이 좋아할 것 같은 노래 하나를 골라 "이거 듣다 네가 생각났어"와 함께 보내보는 건 어때요?' }
           ]
         }
       };
@@ -163,7 +181,7 @@
       }
 
       function welcomeChat(id) {
-        return [{ id: id, sender: 'bot', type: 'welcome', text: '안녕하세요, 사이봇이에요! 오늘 연인이랑 있었던 일, 서운했던 점, 고민 뭐든 편하게 얘기해 주세요. 여기 대화는 연인에게 절대 보이지 않아요 🤫', time: '방금 전' }];
+        return [{ id: id, sender: 'bot', type: 'welcome', text: '안녕하세요, 사이봇이에요! 오늘 연인이랑 있었던 일, 서운했던 점, 고민 뭐든 편하게 얘기해 주세요. 여기 대화는 연인에게 절대 보이지 않아요.', time: '방금 전' }];
       }
 
       function defaultState() {
@@ -184,6 +202,8 @@
           warmthTemp: 37.5,
           completedCount: 0,
           missions: [],
+          missionsLoaded: false, // 첫 서버 동기화가 끝났는지 (로딩 상태)
+          syncError: false, // 마지막 동기화 실패 (에러 상태)
           chats: { A: welcomeChat('w-a'), B: welcomeChat('w-b') },
           draftInput: '',
           showSettings: false,
@@ -261,6 +281,30 @@
           .replace(/"/g, '&quot;');
       }
 
+      // Lucide 라인 아이콘 (인라인 SVG, currentColor) — 다시 그려도 항상 표시됨
+      const ICONS = {
+        mail: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+        bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+        thermometer: '<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/>',
+        settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+        check: '<path d="M20 6 9 17l-5-5"/>',
+        arrowUp: '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+        send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+        sparkles: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
+        smartphone: '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
+        chevronRight: '<path d="m9 18 6-6-6-6"/>',
+        refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v-5"/>',
+        heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+        alert: '<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>',
+        clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
+      };
+      function icon(name, cls) {
+        return '<svg xmlns="http://www.w3.org/2000/svg" class="' + (cls || 'w-5 h-5') + ' shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + (ICONS[name] || '') + '</svg>';
+      }
+      // 예전에 저장된 배지 이름도 '미션' 용어로 맞춰 보여줌
+      const BADGE_LABELS = { '오늘의 데일리 미션': '오늘의 미션', '커플 추천 팁': '함께하는 미션', '다정함 리마인더': '다정함 미션', '데이트 추천 미션': '데이트 미션' };
+      function badgeLabel(b) { return BADGE_LABELS[b] || b || '오늘의 미션'; }
+
       // Supabase REST 헬퍼 (설정된 경우에만 호출)
       async function accessToken() {
         if (!sb) return '';
@@ -325,10 +369,10 @@
             id: 'n-' + m.id,
             sender: 'bot',
             type: 'notice',
-            text: (state.partnerName || '연인') + '님이 "' + m.title + '" 미션을 수락했어요 💛',
+            text: (state.partnerName || '연인') + '님이 "' + m.title + '" 미션을 수락했어요',
             time: nowStr()
           });
-          showToast((state.partnerName || '연인') + '님이 미션을 수락했어요 💛');
+          showToast((state.partnerName || '연인') + '님이 미션을 수락했어요');
         });
       }
 
@@ -389,11 +433,20 @@
           if (joined !== state.partnerJoined) {
             state.partnerJoined = joined;
             changed = true;
-            if (joined) showToast('연인이 들어왔어요! 이제 서로 연결됐어요 💛');
+            if (joined) showToast('연인이 들어왔어요! 이제 서로 연결됐어요');
           }
         }
         const rows = await sbFetchQuiet('daily_missions?couple_code=eq.' + encodeURIComponent(state.coupleCode) + '&order=created_at.desc');
+        const failed = couples === null || rows === null;
+        if (failed !== Boolean(state.syncError)) {
+          state.syncError = failed;
+          changed = true;
+        }
         if (rows && Array.isArray(rows)) {
+          if (!state.missionsLoaded) {
+            state.missionsLoaded = true;
+            changed = true;
+          }
           const merged = mergeRemoteMissions(rows);
           const before = JSON.stringify((state.missions || []).map((m) => [m.id, m.accepted]));
           const after = JSON.stringify(merged.map((m) => [m.id, m.accepted]));
@@ -493,7 +546,7 @@
         ]
       };
       const SMALLTALK_REPLIES = [
-        '안녕하세요! 오늘 연인이랑은 어떤 하루였어요? 좋았던 일도, 서운했던 일도 편하게 얘기해 주세요 😊',
+        '안녕하세요! 오늘 연인이랑은 어떤 하루였어요? 좋았던 일도, 서운했던 일도 편하게 얘기해 주세요.',
         '반가워요! 요즘 둘 사이에 신경 쓰이는 일 있으면 여기서 편하게 털어놔요.',
         '저는 두 분 사이를 몰래 도와주는 사이봇이에요. 여기 얘기는 연인에게 보이지 않으니까 마음 편히 말해 주세요.'
       ];
@@ -576,7 +629,7 @@
       }
 
       function missionDraft(title, message, i) {
-        const badges = ['오늘의 데일리 미션', '다정함 리마인더', '커플 추천 팁'];
+        const badges = ['오늘의 미션', '다정함 미션', '함께하는 미션'];
         return { title: String(title || '오늘의 다정함 미션').slice(0, 40), badge: badges[i % badges.length], message: String(message || '').slice(0, 300) };
       }
 
@@ -610,14 +663,14 @@
       function waitingBanner() {
         if (state.partnerJoined) return '';
         return `
-          <div class="bg-white rounded-2xl p-4 border border-[#FFB74D]/50 shadow-sm">
-            <p class="text-xs font-extrabold text-[#2D3436]">연인을 기다리고 있어요 💌</p>
-            <p class="text-[11px] text-[#636E72] mt-1 leading-relaxed">연인이 카카오로 시작한 뒤 <b>초대코드 입력</b>에 아래 코드를 넣으면 연결돼요.</p>
+          <div class="bg-white rounded-2xl p-4 border border-[#FF8A80]/30 shadow-card">
+            <p class="text-sm font-extrabold text-[#2D3436] flex items-center gap-1.5"><span class="text-[#B83F36]">${icon('clock', 'w-4 h-4')}</span>연인을 기다리고 있어요</p>
+            <p class="text-xs text-[#636E72] mt-1 leading-relaxed">연인이 카카오로 시작한 뒤 <b>초대코드 입력</b>에 아래 코드를 넣으면 연결돼요.</p>
             <div class="flex items-center justify-between gap-2 mt-2.5">
               <span class="font-mono font-extrabold text-base text-[#2D3436] tracking-wider">${esc(state.coupleCode)}</span>
               <div class="flex gap-1.5 shrink-0">
-                <button type="button" data-action="copy-code" class="px-3 py-1.5 rounded-lg bg-[#FFF9F5] border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
-                <button type="button" data-action="share-code" class="px-3 py-1.5 rounded-lg bg-[#FFF9F5] border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">공유</button>
+                <button type="button" data-action="copy-code" class="px-4 h-10 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-xs font-bold text-[#B83F36]">복사</button>
+                <button type="button" data-action="share-code" class="px-4 h-10 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-xs font-bold text-[#B83F36]">공유</button>
               </div>
             </div>
           </div>
@@ -627,7 +680,7 @@
       function landingHeader(subtitle) {
         return `
           <div class="text-center mt-4">
-            <img src="${AVATAR_SRC}" alt="사이봇" class="w-24 h-24 rounded-3xl mx-auto object-cover border-2 border-[#FF8A80]/40 shadow-md" />
+            <img src="${AVATAR_SRC}" alt="사이봇" class="w-24 h-24 rounded-2xl mx-auto object-cover border-2 border-[#FF8A80]/40 shadow-card" />
             <h1 class="text-2xl font-extrabold text-[#2D3436] mt-4 tracking-tight">우리사이</h1>
             <p class="text-xs text-[#636E72] mt-2 leading-relaxed">${subtitle}</p>
           </div>
@@ -638,7 +691,7 @@
         if (state.phase === 'loading') {
           return `
             <div class="flex-1 flex flex-col items-center justify-center px-6 safe-top safe-bottom">
-              <img src="${AVATAR_SRC}" alt="사이봇" class="w-20 h-20 rounded-3xl object-cover border-2 border-[#FF8A80]/40 shadow-md animate-pulse" />
+              <img src="${AVATAR_SRC}" alt="사이봇" class="w-20 h-20 rounded-2xl object-cover border-2 border-[#FF8A80]/40 shadow-card animate-pulse" />
               <p class="text-xs text-[#636E72] mt-4">우리사이를 불러오는 중이에요...</p>
             </div>
           `;
@@ -647,15 +700,15 @@
         if (state.phase === 'signedOut') {
           return `
             <div class="flex-1 flex flex-col justify-between px-6 py-10 safe-top safe-bottom">
-              ${landingHeader('서운한 마음은 사이봇에게만 털어놓으세요.<br />상대방에겐 티 나지 않는 따뜻한 데일리 미션으로 도착해요.')}
+              ${landingHeader('서운한 마음은 사이봇에게만 털어놓으세요.<br />상대방에겐 티 나지 않는 따뜻한 미션으로 도착해요.')}
               <div class="space-y-2.5">
-                <button type="button" data-action="kakao-login" ${state.busy ? 'disabled' : ''} class="w-full py-3.5 rounded-2xl bg-[#FEE500] hover:brightness-95 active:scale-[0.99] text-[#191919] text-sm font-extrabold shadow-[0_6px_20px_rgba(254,229,0,0.35)] transition-all flex items-center justify-center gap-2 ${state.busy ? 'opacity-60' : ''}">
+                <button type="button" data-action="kakao-login" ${state.busy ? 'disabled' : ''} class="w-full h-12 rounded-2xl bg-[#FEE500] hover:brightness-95 active:scale-[0.99] text-[#191919] text-sm font-extrabold shadow-card transition-all flex items-center justify-center gap-2 ${state.busy ? 'opacity-60' : ''}">
                   <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#191919" d="M12 3C6.48 3 2 6.58 2 11c0 2.85 1.86 5.35 4.66 6.77l-.95 3.48c-.08.3.26.54.52.37l4.13-2.74c.54.06 1.08.12 1.64.12 5.52 0 10-3.58 10-8S17.52 3 12 3z"/></svg>
                   ${state.busy ? '카카오로 이동 중...' : '카카오로 시작하기'}
                 </button>
-                <p class="text-[10px] text-[#9AA5A9] text-center leading-relaxed">카카오 닉네임과 프로필 사진만 받아요. 이메일이나 연락처는 받지 않아요.</p>
-                <button type="button" data-action="open-install" class="w-full py-2.5 rounded-2xl bg-white border border-[#2D3436]/10 text-xs font-bold text-[#636E72] hover:text-[#2D3436]">
-                  📱 아이폰 · 안드로이드 홈 화면에 앱으로 설치하는 법
+                <p class="text-xs text-[#636E72] text-center leading-relaxed">카카오 닉네임과 프로필 사진만 받아요. 이메일이나 연락처는 받지 않아요.</p>
+                <button type="button" data-action="open-install" class="w-full h-10 rounded-2xl bg-white border border-[#2D3436]/10 text-sm font-bold text-[#636E72] hover:text-[#2D3436] flex items-center justify-center gap-1.5">
+                  ${icon('smartphone', 'w-4 h-4')}홈 화면에 앱으로 설치하는 법
                 </button>
               </div>
             </div>
@@ -666,98 +719,139 @@
         const name = state.myName || state.kakaoName || '';
         return `
           <div class="flex-1 flex flex-col justify-between px-6 py-10 safe-top safe-bottom overflow-y-auto">
-            ${landingHeader((name ? esc(name) + '님, 반가워요! 💛<br />' : '') + '연인과 연결하면 시작할 수 있어요.')}
+            ${landingHeader((name ? esc(name) + '님, 반가워요!<br />' : '') + '연인과 연결하면 시작할 수 있어요.')}
 
-            <div class="bg-white rounded-3xl p-5 shadow-[0_8px_28px_rgba(45,52,54,0.06)] border border-[#FF8A80]/20 space-y-4 my-6">
+            <div class="bg-white rounded-2xl p-5 shadow-card border border-[#FF8A80]/20 space-y-4 my-6">
               <div>
-                <label class="block text-[11px] font-bold text-[#636E72] mb-1">우리사이에서 쓸 내 닉네임</label>
-                <input id="ob-my-name" type="text" maxlength="12" value="${esc(name)}" placeholder="닉네임" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
+                <label class="block text-xs font-bold text-[#636E72] mb-1">우리사이에서 쓸 내 닉네임</label>
+                <input id="ob-my-name" type="text" maxlength="12" value="${esc(name)}" placeholder="닉네임" class="w-full px-3 h-12 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
               </div>
               ${state.joinMode ? `
                 <div>
-                  <label class="block text-[11px] font-bold text-[#636E72] mb-1">연인에게 받은 초대 코드</label>
-                  <input id="ob-code" type="text" autocapitalize="characters" autocomplete="off" placeholder="S2-XXXXXX" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-mono font-bold tracking-wider uppercase focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
+                  <label class="block text-xs font-bold text-[#636E72] mb-1">연인에게 받은 초대 코드</label>
+                  <input id="ob-code" type="text" autocapitalize="characters" autocomplete="off" placeholder="S2-XXXXXX" class="w-full px-3 h-12 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-mono font-bold tracking-wider uppercase focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
                 </div>
               ` : `
-                <p class="text-[11px] text-[#636E72] leading-relaxed">먼저 시작하는 분은 <b>초대코드 만들기</b>, 연인에게 코드를 받은 분은 <b>초대코드 입력</b>을 눌러 주세요.</p>
+                <p class="text-xs text-[#636E72] leading-relaxed">먼저 시작하는 분은 <b>초대코드 만들기</b>, 연인에게 코드를 받은 분은 <b>초대코드 입력</b>을 눌러 주세요.</p>
               `}
             </div>
 
             <div class="space-y-2.5">
               ${state.joinMode ? `
-                <button type="button" data-action="join-couple" ${state.busy ? 'disabled' : ''} class="w-full py-3.5 rounded-2xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-sm font-extrabold shadow-[0_6px_20px_rgba(255,138,128,0.4)] ${state.busy ? 'opacity-60' : ''}">
-                  ${state.busy ? '연결하는 중...' : '연인과 연결하기 💛'}
+                <button type="button" data-action="join-couple" ${state.busy ? 'disabled' : ''} class="w-full h-12 rounded-2xl bg-[#C2453B] hover:bg-[#B23B32] text-white text-sm font-extrabold shadow-cta ${state.busy ? 'opacity-60' : ''}">
+                  ${state.busy ? '연결하는 중...' : '연인과 연결하기'}
                 </button>
-                <button type="button" data-action="join-back" class="w-full py-2.5 rounded-2xl bg-white border border-[#2D3436]/10 text-xs font-bold text-[#636E72]">뒤로</button>
+                <button type="button" data-action="join-back" class="w-full h-10 rounded-2xl bg-white border border-[#2D3436]/10 text-xs font-bold text-[#636E72]">뒤로</button>
               ` : `
-                <button type="button" data-action="create-couple" ${state.busy ? 'disabled' : ''} class="w-full py-3.5 rounded-2xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-sm font-extrabold shadow-[0_6px_20px_rgba(255,138,128,0.4)] ${state.busy ? 'opacity-60' : ''}">
+                <button type="button" data-action="create-couple" ${state.busy ? 'disabled' : ''} class="w-full h-12 rounded-2xl bg-[#C2453B] hover:bg-[#B23B32] text-white text-sm font-extrabold shadow-cta ${state.busy ? 'opacity-60' : ''}">
                   ${state.busy ? '만드는 중...' : '초대코드 만들기'}
                 </button>
-                <button type="button" data-action="join-mode" class="w-full py-3.5 rounded-2xl bg-white border border-[#FF8A80]/40 text-[#E0665B] text-sm font-extrabold">
+                <button type="button" data-action="join-mode" class="w-full h-12 rounded-2xl bg-white border border-[#FF8A80]/40 text-[#B83F36] text-sm font-extrabold">
                   초대코드 입력
                 </button>
               `}
-              <button type="button" data-action="logout-confirm" class="w-full py-2 text-[11px] font-bold text-[#9AA5A9]">다른 카카오 계정으로 시작하기</button>
+              <button type="button" data-action="logout-confirm" class="w-full h-10 text-xs font-bold text-[#636E72]">다른 카카오 계정으로 시작하기</button>
             </div>
           </div>
         `;
       }
 
+      function missionSkeleton() {
+        return [0, 1].map(() => `
+          <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/10 shadow-card animate-pulse" aria-hidden="true">
+            <div class="h-5 w-24 rounded-xl bg-[#F1F2F6]"></div>
+            <div class="h-4 w-2/3 rounded-xl bg-[#F1F2F6] mt-3"></div>
+            <div class="h-3 w-full rounded-xl bg-[#F1F2F6] mt-3"></div>
+            <div class="h-3 w-5/6 rounded-xl bg-[#F1F2F6] mt-2"></div>
+            <div class="h-10 w-full rounded-xl bg-[#F1F2F6] mt-4"></div>
+          </div>`).join('');
+      }
+
+      function missionCard(m) {
+        const highlight = !m.accepted && m.targetRole === state.role;
+        return `
+          <article class="animate-pop bg-white rounded-2xl p-4 border ${highlight ? 'border-[#FF8A80] ring-2 ring-[#FF8A80]/15' : 'border-[#2D3436]/10'} shadow-card">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-[#B83F36] bg-[#FFF0EE] px-2 py-0.5 rounded-xl">${esc(badgeLabel(m.badge))}</span>
+              <span class="text-xs text-[#636E72]">${esc(m.time)}</span>
+            </div>
+            <h3 class="text-base font-extrabold text-[#2D3436] mb-1">${esc(m.title)}</h3>
+            <p class="text-sm text-[#4A5568] leading-relaxed">${esc(m.message)}</p>
+            <div class="mt-4">
+              ${!m.accepted ? `
+                <button type="button" data-action="accept-mission" data-id="${esc(m.id)}" class="w-full h-10 rounded-xl bg-[#C2453B] hover:bg-[#B23B32] text-white text-sm font-extrabold shadow-cta transition-colors flex items-center justify-center gap-1.5">
+                  ${icon('heart', 'w-4 h-4')}오늘 해볼게요
+                </button>
+              ` : `
+                <div class="flex items-center justify-between bg-[#F1F2F6] text-[#2D3436] px-3 h-10 rounded-xl text-sm font-bold">
+                  <span class="flex items-center gap-1.5">${icon('check', 'w-4 h-4')}미션 완료</span>
+                  <span class="text-xs text-[#636E72]">+1.2°C</span>
+                </div>
+              `}
+            </div>
+          </article>`;
+      }
+
       function renderMissionsTab() {
-        // 현재 내 역할에게 온 미션 + 공통 데일리 팁만 노출 (상대방 불만 0%)
+        // 현재 내 역할에게 온 미션 + 공통 미션만 노출 (상대방 불만 0%)
         const visibleMissions = state.missions.filter((m) => m.targetRole === 'BOTH' || m.targetRole === state.role);
         const pendingCount = visibleMissions.filter((m) => !m.accepted).length;
+        const empty = visibleMissions.length === 0;
+
+        let list;
+        if (empty && state.syncError) {
+          list = `
+            <div class="bg-white rounded-2xl p-6 border border-[#2D3436]/10 shadow-card text-center" role="alert">
+              <div class="w-10 h-10 mx-auto rounded-xl bg-[#F1F2F6] text-[#636E72] flex items-center justify-center">${icon('alert', 'w-5 h-5')}</div>
+              <p class="text-sm font-bold text-[#2D3436] mt-3">미션을 불러오지 못했어요</p>
+              <p class="text-xs text-[#636E72] mt-1 leading-relaxed">인터넷 연결을 확인하고 다시 시도해 주세요.</p>
+              <button type="button" data-action="retry-sync" class="mt-4 h-10 px-4 rounded-xl bg-white border border-[#FF8A80]/40 text-[#B83F36] text-sm font-bold inline-flex items-center gap-1.5">${icon('refresh', 'w-4 h-4')}다시 시도</button>
+            </div>`;
+        } else if (empty && !state.missionsLoaded) {
+          list = `<p class="sr-only" role="status">미션을 불러오는 중이에요</p>${missionSkeleton()}`;
+        } else if (empty) {
+          list = `
+            <div class="bg-white rounded-2xl p-6 border border-[#FF8A80]/20 shadow-card text-center">
+              <div class="w-10 h-10 mx-auto rounded-xl bg-[#FFF0EE] text-[#B83F36] flex items-center justify-center">${icon('mail', 'w-5 h-5')}</div>
+              <p class="text-sm font-bold text-[#2D3436] mt-3">아직 도착한 미션이 없어요</p>
+              <p class="text-xs text-[#636E72] mt-1 leading-relaxed">사이봇 비밀방에서 마음을 전하면,<br />상대방에게만 따뜻한 미션으로 도착해요.</p>
+              <button type="button" data-action="switch-tab" data-tab="saibot" class="mt-4 h-10 px-4 rounded-xl bg-[#C2453B] hover:bg-[#B23B32] text-white text-sm font-extrabold shadow-cta inline-flex items-center gap-1.5">${icon('bot', 'w-4 h-4')}사이봇에게 마음 전하기</button>
+            </div>`;
+        } else {
+          list = visibleMissions.map(missionCard).join('');
+        }
+        const errorStrip = state.syncError && !empty ? `
+          <div class="flex items-center justify-between gap-2 bg-[#F1F2F6] rounded-xl pl-3 pr-1 h-10 text-xs text-[#2D3436]" role="status">
+            <span class="flex items-center gap-1.5 min-w-0 truncate">${icon('alert', 'w-4 h-4')}연결이 불안정해서 최신 내용이 아닐 수 있어요</span>
+            <button type="button" data-action="retry-sync" class="h-10 px-2 font-bold text-[#B83F36] shrink-0">다시 시도</button>
+          </div>` : '';
 
         return `
-          <div class="flex-1 overflow-y-auto px-4 py-4 space-y-3.5">
+          <div class="flex-1 overflow-y-auto px-4 py-5 space-y-6">
             ${waitingBanner()}
-            <div class="bg-gradient-to-r from-[#FF8A80] to-[#FFA096] rounded-2xl p-4 text-white shadow-[0_6px_20px_rgba(255,138,128,0.28)]">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-[11px] font-semibold text-white/85">${esc(state.myName)} ♥ ${esc(state.partnerName)} · 코드 ${esc(state.coupleCode)}</p>
-                  <p class="text-base font-extrabold mt-0.5">우리의 다정함 온도 ${state.warmthTemp.toFixed(1)}°C</p>
+            <section class="bg-gradient-to-br from-[#B83F36] to-[#C94A40] rounded-2xl p-4 text-white shadow-cta">
+              <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-xs font-semibold text-white truncate flex items-center gap-1">${esc(state.myName)} ${icon('heart', 'w-3 h-3')} ${esc(state.partnerName)} · 코드 ${esc(state.coupleCode)}</p>
+                  <p class="mt-1 flex items-baseline"><span class="text-sm font-bold mr-1.5">우리 온도</span><span class="text-2xl font-extrabold leading-none">${state.warmthTemp.toFixed(1)}</span><span class="text-xs font-bold ml-0.5">°C</span></p>
                 </div>
-                <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-extrabold text-sm">
-                  ${state.completedCount}회
+                <div class="w-14 h-14 rounded-2xl bg-[#2D3436]/15 flex items-center justify-center shrink-0" aria-label="완료한 미션 ${state.completedCount}회">
+                  <span class="flex items-baseline"><span class="text-2xl font-extrabold leading-none">${state.completedCount}</span><span class="text-xs font-bold ml-0.5">회</span></span>
                 </div>
               </div>
               <div class="mt-3 w-full h-1.5 bg-white/30 rounded-full overflow-hidden">
                 <div class="h-full bg-white rounded-full transition-all duration-500" style="width:${Math.min(100, Math.max(12, ((state.warmthTemp - 35) / 10) * 100))}%"></div>
               </div>
-            </div>
+            </section>
 
-            <div class="flex items-center justify-between px-1 pt-1">
-              <h2 class="text-sm font-extrabold text-[#2D3436]">오늘 도착한 커플 추천 팁</h2>
-              <span class="text-xs font-semibold text-[#636E72]">대기 ${pendingCount}개</span>
-            </div>
-
-            ${visibleMissions.length === 0 ? `
-              <div class="bg-white rounded-2xl p-6 border border-[#FF8A80]/15 text-center">
-                <p class="text-sm font-bold text-[#2D3436]">아직 도착한 미션이 없어요</p>
-                <p class="text-xs text-[#9AA5A9] mt-1.5 leading-relaxed">사이봇 비밀방에서 마음을 전하면,<br />상대방에게만 따뜻한 미션으로 도착해요.</p>
+            <section class="space-y-3" aria-labelledby="missions-heading">
+              <div class="flex items-center justify-between px-1">
+                <h2 id="missions-heading" class="text-base font-extrabold text-[#2D3436]">오늘 도착한 미션</h2>
+                <span class="text-xs font-semibold text-[#636E72]">대기 ${pendingCount}개</span>
               </div>
-            ` : visibleMissions.map((m) => `
-              <div class="animate-pop bg-white rounded-2xl p-4 border ${!m.accepted && m.targetRole === state.role ? 'border-[#FF8A80] ring-2 ring-[#FF8A80]/15' : 'border-[#2D3436]/8'} shadow-[0_4px_16px_rgba(45,52,54,0.05)] relative">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-[11px] font-bold text-[#FF8A80] bg-[#FFF0EE] px-2.5 py-0.5 rounded-full">${esc(m.badge)}</span>
-                  <span class="text-[10px] text-[#9AA5A9]">${esc(m.time)}</span>
-                </div>
-                <h3 class="text-[15px] font-extrabold text-[#2D3436] mb-1.5">${esc(m.title)}</h3>
-                <p class="text-[13px] text-[#4A5568] leading-relaxed">${esc(m.message)}</p>
-                <div class="mt-3.5 pt-3 border-t border-[#2D3436]/5">
-                  ${!m.accepted ? `
-                    <button type="button" data-action="accept-mission" data-id="${esc(m.id)}" class="w-full py-2.5 rounded-xl bg-[#FFF0EE] hover:bg-[#FF8A80] text-[#E0665B] hover:text-white text-xs font-extrabold transition-all border border-[#FF8A80]/30">
-                      오늘 해볼게요! 💛
-                    </button>
-                  ` : `
-                    <div class="flex items-center justify-between bg-[#E8F8F0] text-[#1E8449] px-3 py-2 rounded-xl text-xs font-bold">
-                      <span>✓ 다정함 스탬프 완료!</span>
-                      <span class="text-[10px] opacity-80">+1.2°C</span>
-                    </div>
-                  `}
-                </div>
-              </div>
-            `).join('')}
+              ${errorStrip}
+              ${list}
+            </section>
           </div>
         `;
       }
@@ -771,19 +865,19 @@
                 if (msg.sender === 'user') {
                   return `
                     <div class="flex flex-col items-end animate-pop">
-                      <div class="max-w-[85%] bg-[#2D3436] text-white rounded-2xl rounded-tr-sm px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm">
+                      <div class="max-w-[85%] bg-[#2D3436] text-white rounded-2xl rounded-tr-sm px-3.5 py-2.5 text-sm leading-relaxed shadow-card">
                         ${esc(msg.text)}
                       </div>
-                      <span class="mt-1 text-[10px] text-[#9AA5A9]">${esc(msg.time)}</span>
+                      <span class="mt-1 text-xs text-[#636E72]">${esc(msg.time)}</span>
                     </div>
                   `;
                 }
                 if (msg.type === 'welcome' || msg.type === 'notice') {
                   return `
                     <div class="flex items-start gap-2 animate-pop">
-                      <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
-                      <div class="max-w-[85%] ${msg.type === 'notice' ? 'bg-[#FFF8E7] border-[#FFB74D]/50' : 'bg-white border-[#FF8A80]/15'} rounded-2xl rounded-tl-sm px-3.5 py-3 border shadow-sm">
-                        <p class="text-[13px] text-[#2D3436] leading-relaxed">${esc(msg.text)}</p>
+                      <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-xl object-cover border border-[#FF8A80]/30 shrink-0" />
+                      <div class="max-w-[85%] ${msg.type === 'notice' ? 'bg-[#FFF0EE] border-[#FF8A80]/30' : 'bg-white border-[#FF8A80]/15'} rounded-2xl rounded-tl-sm px-3.5 py-3 border shadow-card">
+                        <p class="text-sm text-[#2D3436] leading-relaxed">${esc(msg.text)}</p>
                       </div>
                     </div>
                   `;
@@ -791,40 +885,40 @@
                 const drafts = Array.isArray(msg.drafts) ? msg.drafts : [];
                 const draft = drafts[msg.draftIdx || 0] || drafts[0];
                 const replyBubble = `
-                      <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-sm">
-                        <p class="text-[13px] text-[#2D3436] leading-relaxed whitespace-pre-line">${esc(msg.empathy)}</p>
-                        ${msg.fallback ? '<p class="mt-1.5 text-[10px] text-[#B2BEC3]">AI 연결이 잠시 불안정해서 기본 답변을 보여드렸어요</p>' : ''}
+                      <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-card">
+                        <p class="text-sm text-[#2D3436] leading-relaxed whitespace-pre-line">${esc(msg.empathy)}</p>
+                        ${msg.fallback ? '<p class="mt-1.5 text-xs text-[#636E72]">AI 연결이 잠시 불안정해서 기본 답변을 보여드렸어요</p>' : ''}
                       </div>`;
                 if (!draft) {
                   return `
                     <div class="flex items-start gap-2 animate-pop">
-                      <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
+                      <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-xl object-cover border border-[#FF8A80]/30 shrink-0" />
                       <div class="flex-1 min-w-0">${replyBubble}</div>
                     </div>
                   `;
                 }
                 return `
                   <div class="flex items-start gap-2 animate-pop">
-                    <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
+                    <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-xl object-cover border border-[#FF8A80]/30 shrink-0" />
                     <div class="flex-1 space-y-2.5 min-w-0">
                       ${replyBubble}
-                      <div class="bg-gradient-to-br from-white to-[#FFF3F0] rounded-2xl p-3.5 border border-[#FF8A80]/35 shadow-sm">
+                      <div class="bg-gradient-to-br from-white to-[#FFF3F0] rounded-2xl p-3.5 border border-[#FF8A80]/35 shadow-card">
                         <div class="flex items-center justify-between mb-2">
-                          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF8A80]/15 text-[#D95B50]">✨ 연인에게 보낼 미션 제안</span>
-                          ${!msg.sent && drafts.length > 1 ? `<button type="button" data-action="shuffle-draft" data-id="${esc(msg.id)}" class="text-[11px] font-bold text-[#636E72] hover:text-[#FF8A80]">다른 제안 (${(msg.draftIdx || 0) + 1}/${drafts.length})</button>` : ''}
+                          <span class="text-xs font-bold px-2 py-0.5 rounded-xl bg-[#FFF0EE] text-[#B83F36] inline-flex items-center gap-1">${icon('sparkles', 'w-3 h-3')}연인에게 보낼 미션 제안</span>
+                          ${!msg.sent && drafts.length > 1 ? `<button type="button" data-action="shuffle-draft" data-id="${esc(msg.id)}" class="text-xs font-bold text-[#636E72] hover:text-[#B83F36]">다른 미션 (${(msg.draftIdx || 0) + 1}/${drafts.length})</button>` : ''}
                         </div>
                         <div class="bg-white rounded-xl p-3 border border-[#FF8A80]/15">
-                          <p class="text-[10px] font-bold text-[#FF8A80] mb-1">${esc(draft.badge)} · ${esc(draft.title)}</p>
-                          <p class="text-[12.5px] text-[#2D3436] leading-relaxed font-medium">“${esc(draft.message)}”</p>
+                          <p class="text-xs font-bold text-[#B83F36] mb-1">${esc(badgeLabel(draft.badge))} · ${esc(draft.title)}</p>
+                          <p class="text-sm text-[#2D3436] leading-relaxed font-medium">“${esc(draft.message)}”</p>
                         </div>
                         <div class="mt-2.5">
                           ${!msg.sent ? `
-                            <button type="button" data-action="send-nudge" data-id="${esc(msg.id)}" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">
-                              이대로 슬쩍 신호 보내기 ✨
+                            <button type="button" data-action="send-nudge" data-id="${esc(msg.id)}" class="w-full h-10 rounded-xl bg-[#C2453B] hover:bg-[#B23B32] text-white text-sm font-extrabold shadow-cta transition-colors flex items-center justify-center gap-1.5">
+                              ${icon('send', 'w-4 h-4')}이 미션 보내기
                             </button>
                           ` : `
-                            <div class="w-full py-2 rounded-xl bg-[#FFF0EE] text-[#E0665B] text-xs font-bold text-center border border-[#FF8A80]/30">
-                              ✓ 연인 피드에 자연스럽게 도착했어요
+                            <div class="w-full h-10 rounded-xl bg-[#F1F2F6] text-[#2D3436] text-sm font-bold flex items-center justify-center gap-1.5">
+                              ${icon('check', 'w-4 h-4')}연인에게 미션이 도착했어요
                             </div>
                           `}
                         </div>
@@ -835,8 +929,8 @@
               }).join('')}
               ${state.botTyping ? `
                 <div id="bot-typing" class="flex items-start gap-2 animate-pop">
-                  <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
-                  <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-sm text-[13px] text-[#9AA5A9]">사이봇이 생각하는 중이에요…</div>
+                  <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-xl object-cover border border-[#FF8A80]/30 shrink-0" />
+                  <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-card text-sm text-[#636E72]">사이봇이 생각하는 중이에요…</div>
                 </div>` : ''}
             </div>
 
@@ -844,16 +938,16 @@
             <div class="bg-white border-t border-[#FF8A80]/15 px-3.5 pt-2.5 pb-3">
               <div class="flex gap-1.5 overflow-x-auto pb-2 no-scrollbar">
                 ${QUICK_TAGS.map((t) => `
-                  <button type="button" data-action="quick-tag" data-sample="${esc(t.sample)}" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#FFF9F5] text-[#2D3436] border border-[#FF8A80]/30 hover:bg-[#FF8A80] hover:text-white transition-colors">
+                  <button type="button" data-action="quick-tag" data-sample="${esc(t.sample)}" class="shrink-0 h-8 px-3 rounded-xl text-xs font-semibold bg-[#FFF9F5] text-[#2D3436] border border-[#FF8A80]/30 hover:bg-[#FFF0EE] transition-colors">
                     ${esc(t.label)}
                   </button>
                 `).join('')}
                 <span class="shrink-0 w-5" aria-hidden="true"></span>
               </div>
-              <div class="flex items-end gap-2 bg-[#FFF9F5] rounded-2xl border border-[#FF8A80]/30 px-3 py-2">
-                <textarea id="emotion-input" rows="2" maxlength="500" enterkeyhint="send" placeholder="사이봇에게 편하게 얘기해 보세요 (서운했던 일, 고민, 뭐든지)" class="flex-1 bg-transparent text-[13px] text-[#2D3436] placeholder-[#9AA5A9] focus:outline-none resize-none leading-snug">${esc(state.draftInput)}</textarea>
-                <button type="button" data-action="send-emotion" class="w-9 h-9 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white flex items-center justify-center shrink-0 shadow-sm font-bold text-sm">
-                  ↑
+              <div class="flex items-end gap-2 bg-[#FFF9F5] rounded-xl border border-[#FF8A80]/30 pl-3 pr-1.5 py-1.5">
+                <textarea id="emotion-input" aria-label="사이봇에게 보낼 메시지" rows="2" maxlength="500" enterkeyhint="send" placeholder="사이봇에게 편하게 얘기해 보세요 (서운했던 일, 고민, 뭐든지)" class="flex-1 bg-transparent text-sm text-[#2D3436] placeholder-[#6B7579] focus:outline-none resize-none leading-snug">${esc(state.draftInput)}</textarea>
+                <button type="button" data-action="send-emotion" aria-label="보내기" class="w-10 h-10 rounded-xl bg-[#C2453B] hover:bg-[#B23B32] text-white flex items-center justify-center shrink-0 shadow-cta">
+                  ${icon('arrowUp', 'w-5 h-5')}<span class="sr-only">보내기</span>
                 </button>
               </div>
             </div>
@@ -864,35 +958,38 @@
       function renderWarmthTab() {
         const mySent = (state.chats[state.role] || []).filter((m) => m.sent);
         return `
-          <div class="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-            <div class="bg-white rounded-3xl p-5 border border-[#FF8A80]/20 shadow-sm text-center">
-              <p class="text-xs font-bold text-[#FF8A80]">우리 커플 다정함 리포트</p>
-              <p class="text-4xl font-extrabold text-[#2D3436] mt-2">${state.warmthTemp.toFixed(1)}°C</p>
-              <p class="text-xs text-[#636E72] mt-1">함께 달성한 다정함 미션 ${state.completedCount}회</p>
+          <div class="flex-1 overflow-y-auto px-4 py-5 space-y-6">
+            <section class="bg-white rounded-2xl p-5 border border-[#FF8A80]/20 shadow-card text-center">
+              <p class="text-xs font-bold text-[#B83F36]">우리 커플 다정함 리포트</p>
+              <p class="mt-3 flex items-baseline justify-center font-extrabold text-[#2D3436]"><span class="text-5xl leading-none tracking-tight">${state.warmthTemp.toFixed(1)}</span><span class="text-2xl ml-1">°C</span></p>
+              <p class="text-sm text-[#636E72] mt-2">함께 완료한 미션 <b class="text-[#2D3436]">${state.completedCount}</b>회</p>
               <div class="mt-4 w-full h-2.5 bg-[#FFF0EE] rounded-full overflow-hidden">
                 <div class="h-full bg-gradient-to-r from-[#FFAB91] to-[#FF8A80] rounded-full" style="width:${Math.min(100, Math.max(12, ((state.warmthTemp - 35) / 10) * 100))}%"></div>
               </div>
-            </div>
+            </section>
 
-            <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
-              <p class="text-xs font-bold text-[#2D3436]">우리 커플 초대 코드</p>
-              <p class="text-[11px] text-[#9AA5A9]">${state.partnerJoined ? '두 분이 연결된 코드예요. 다른 사람은 들어올 수 없어요.' : '연인이 카카오로 로그인한 뒤 이 코드를 입력하면 연결돼요.'}</p>
-              <div class="flex items-center justify-between text-xs">
+            <section class="bg-white rounded-2xl p-4 border border-[#2D3436]/10 shadow-card space-y-3">
+              <h3 class="text-sm font-bold text-[#2D3436]">우리 커플 초대 코드</h3>
+              <p class="text-xs text-[#636E72]">${state.partnerJoined ? '두 분이 연결된 코드예요. 다른 사람은 들어올 수 없어요.' : '연인이 카카오로 로그인한 뒤 이 코드를 입력하면 연결돼요.'}</p>
+              <div class="flex items-center justify-between">
                 <span class="font-mono font-extrabold text-base text-[#2D3436] tracking-wider">${esc(state.coupleCode)}</span>
-                <button type="button" data-action="copy-code" class="px-3 py-1.5 rounded-lg bg-[#FFF9F5] border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
+                <button type="button" data-action="copy-code" class="h-10 px-4 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-bold text-[#B83F36]">복사</button>
               </div>
-            </div>
+            </section>
 
-            <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm">
-              <h3 class="text-xs font-extrabold text-[#2D3436] mb-2">내가 보낸 다정함 신호 (${mySent.length}건)</h3>
-              ${mySent.length === 0 ? `<p class="text-xs text-[#9AA5A9]">아직 보낸 신호가 없어요. 사이봇 탭에서 속마음을 털어놓아 보세요.</p>` : mySent.map((s) => {
+            <section class="bg-white rounded-2xl p-4 border border-[#2D3436]/10 shadow-card">
+              <h3 class="text-sm font-extrabold text-[#2D3436] mb-2">내가 보낸 미션 (${mySent.length}건)</h3>
+              ${mySent.length === 0 ? `
+                <p class="text-xs text-[#636E72] leading-relaxed">아직 보낸 미션이 없어요. 사이봇에게 속마음을 털어놓으면 연인에게 보낼 미션을 만들어 드려요.</p>
+                <button type="button" data-action="switch-tab" data-tab="saibot" class="mt-3 w-full h-10 rounded-xl bg-[#C2453B] hover:bg-[#B23B32] text-white text-sm font-extrabold shadow-cta flex items-center justify-center gap-1.5">${icon('bot', 'w-4 h-4')}사이봇에게 마음 전하기</button>
+              ` : mySent.map((s) => {
                 const d = s.drafts[s.draftIdx || 0];
-                return `<div class="py-2 border-t border-[#2D3436]/5 first:border-t-0 text-xs">
-                  <p class="font-bold text-[#FF8A80]">${esc(d.title)}</p>
-                  <p class="text-[#4A5568] mt-0.5">${esc(d.message)}</p>
+                return `<div class="py-2.5 border-t border-[#2D3436]/5 first:border-t-0">
+                  <p class="text-sm font-bold text-[#B83F36]">${esc(d.title)}</p>
+                  <p class="text-xs text-[#4A5568] mt-0.5 leading-relaxed">${esc(d.message)}</p>
                 </div>`;
               }).join('')}
-            </div>
+            </section>
           </div>
         `;
       }
@@ -902,50 +999,50 @@
         if (state.showSettings) {
           html += `
             <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
-              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 shadow-2xl max-h-[88vh] overflow-y-auto">
+              <div class="bg-white rounded-2xl w-full max-w-[400px] p-5 shadow-pop max-h-[88vh] overflow-y-auto">
                 <div class="flex items-center justify-between mb-4">
                   <h3 class="text-base font-extrabold text-[#2D3436]">설정</h3>
-                  <button type="button" data-action="close-modals" class="text-sm font-bold text-[#636E72] px-2 py-1">닫기</button>
+                  <button type="button" data-action="close-modals" class="text-sm font-bold text-[#636E72] px-4 h-10 rounded-xl hover:bg-[#F1F2F6]">닫기</button>
                 </div>
 
                 <div class="space-y-4 text-xs">
                   <div class="space-y-3">
                     <div>
                       <label class="block font-bold text-[#636E72] mb-1">내 닉네임</label>
-                      <input id="set-my-name" type="text" value="${esc(state.myName)}" maxlength="12" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold text-[#2D3436] focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
+                      <input id="set-my-name" type="text" value="${esc(state.myName)}" maxlength="12" class="w-full px-3 h-12 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold text-[#2D3436] focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
                     </div>
                     <div class="flex items-center justify-between rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/15 px-3 py-2.5">
                       <span class="font-bold text-[#636E72]">연인</span>
                       <span class="text-sm font-semibold text-[#2D3436]">${state.partnerJoined ? esc(state.partnerName) : '아직 연결 전이에요'}</span>
                     </div>
-                    <button type="button" data-action="save-settings" class="w-full py-2.5 rounded-xl bg-[#FF8A80] text-white text-xs font-extrabold">닉네임 저장</button>
+                    <button type="button" data-action="save-settings" class="w-full h-10 rounded-xl bg-[#C2453B] text-white text-xs font-extrabold">닉네임 저장</button>
                   </div>
 
                   <div class="rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-3.5 space-y-2">
                     <p class="font-bold text-[#2D3436]">우리 초대 코드</p>
-                    <p class="text-[11px] text-[#9AA5A9] leading-relaxed">${state.partnerJoined ? '두 분이 연결된 코드예요. 다른 사람은 들어올 수 없어요.' : '연인이 카카오로 로그인한 뒤 이 코드를 입력하면 연결돼요.'}</p>
+                    <p class="text-xs text-[#636E72] leading-relaxed">${state.partnerJoined ? '두 분이 연결된 코드예요. 다른 사람은 들어올 수 없어요.' : '연인이 카카오로 로그인한 뒤 이 코드를 입력하면 연결돼요.'}</p>
                     <div class="flex items-center justify-between gap-2 pt-0.5">
                       <span class="font-mono font-extrabold text-base text-[#2D3436] tracking-wider">${esc(state.coupleCode)}</span>
                       <div class="flex gap-1.5 shrink-0">
-                        <button type="button" data-action="copy-code" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
-                        <button type="button" data-action="share-code" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">공유</button>
+                        <button type="button" data-action="copy-code" class="px-4 h-10 rounded-xl bg-white border border-[#FF8A80]/30 text-xs font-bold text-[#B83F36]">복사</button>
+                        <button type="button" data-action="share-code" class="px-4 h-10 rounded-xl bg-white border border-[#FF8A80]/30 text-xs font-bold text-[#B83F36]">공유</button>
                       </div>
                     </div>
                   </div>
 
-                  <button type="button" data-action="open-install" class="w-full text-left rounded-2xl bg-white border border-[#2D3436]/8 px-3.5 py-3 flex items-center justify-between">
+                  <button type="button" data-action="open-install" class="w-full text-left rounded-2xl bg-white border border-[#2D3436]/10 px-3.5 py-3 flex items-center justify-between">
                     <span>
                       <span class="block font-bold text-[#2D3436]">홈 화면에 추가</span>
-                      <span class="block text-[11px] text-[#9AA5A9] mt-0.5">아이폰 · 안드로이드에 앱처럼 설치하기</span>
+                      <span class="block text-xs text-[#636E72] mt-0.5">아이폰 · 안드로이드에 앱처럼 설치하기</span>
                     </span>
-                    <span class="text-[#9AA5A9]">›</span>
+                    <span class="text-[#636E72]">${icon('chevronRight', 'w-4 h-4')}</span>
                   </button>
 
-                  ${state.kakaoName ? `<p class="text-[11px] text-[#9AA5A9] text-center">카카오 계정 <span class="font-bold text-[#636E72]">${esc(state.kakaoName)}</span>(으)로 로그인됨</p>` : ''}
-                  <p class="text-[11px] text-[#B2BEC3] text-center pt-1">우리사이 <span class="font-mono tracking-wide">${APP_VERSION}</span></p>
+                  ${state.kakaoName ? `<p class="text-xs text-[#636E72] text-center">카카오 계정 <span class="font-bold text-[#636E72]">${esc(state.kakaoName)}</span>(으)로 로그인됨</p>` : ''}
+                  <p class="text-xs text-[#636E72] text-center pt-1">우리사이 <span class="font-mono tracking-wide">${APP_VERSION}</span></p>
                 </div>
 
-                <button type="button" data-action="logout-ask" class="mt-5 w-full py-3 rounded-2xl border border-[#FF8A80]/30 text-[#E0665B] text-xs font-extrabold bg-white hover:bg-[#FFF0EE]">
+                <button type="button" data-action="logout-ask" class="mt-5 w-full h-12 rounded-2xl border border-[#FF8A80]/30 text-[#B83F36] text-xs font-extrabold bg-white hover:bg-[#FFF0EE]">
                   로그아웃
                 </button>
               </div>
@@ -956,12 +1053,12 @@
         if (state.showLogoutConfirm) {
           html += `
             <div class="fixed inset-0 z-[70] bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
-              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 shadow-2xl space-y-3">
+              <div class="bg-white rounded-2xl w-full max-w-[400px] p-5 shadow-pop space-y-3">
                 <h3 class="text-base font-extrabold text-[#2D3436]">로그아웃할까요?</h3>
                 <p class="text-xs text-[#636E72] leading-relaxed">카카오 로그인이 해제되고 시작 화면으로 돌아가요. 미션과 온도 기록은 계정에 남아 있어서, 다시 카카오로 로그인하면 그대로 돌아와요. (사이봇 비밀방 대화는 이 기기에서 지워져요.)</p>
                 <div class="flex gap-2 pt-1">
-                  <button type="button" data-action="logout-cancel" class="flex-1 py-2.5 rounded-xl bg-[#F1F2F6] text-[#2D3436] text-xs font-bold">취소</button>
-                  <button type="button" data-action="logout-confirm" class="flex-1 py-2.5 rounded-xl bg-[#FF8A80] text-white text-xs font-extrabold">로그아웃</button>
+                  <button type="button" data-action="logout-cancel" class="flex-1 h-10 rounded-xl bg-[#F1F2F6] text-[#2D3436] text-xs font-bold">취소</button>
+                  <button type="button" data-action="logout-confirm" class="flex-1 h-10 rounded-xl bg-[#C2453B] text-white text-xs font-extrabold">로그아웃</button>
                 </div>
               </div>
             </div>
@@ -971,22 +1068,22 @@
         if (state.showInstallGuide) {
           html += `
             <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
-              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 space-y-3.5 shadow-2xl">
+              <div class="bg-white rounded-2xl w-full max-w-[400px] p-5 space-y-3.5 shadow-pop">
                 <div class="flex items-center justify-between">
-                  <h3 class="text-base font-extrabold text-[#2D3436]">📱 핸드폰에 앱으로 설치하기</h3>
-                  <button type="button" data-action="close-modals" class="text-sm font-bold text-[#636E72] px-2 py-1">닫기</button>
+                  <h3 class="text-base font-extrabold text-[#2D3436] flex items-center gap-1.5">${icon('smartphone', 'w-5 h-5')}핸드폰에 앱으로 설치하기</h3>
+                  <button type="button" data-action="close-modals" class="text-sm font-bold text-[#636E72] px-4 h-10 rounded-xl hover:bg-[#F1F2F6]">닫기</button>
                 </div>
                 <div class="space-y-2.5 text-xs text-[#4A5568] leading-relaxed">
                   <div class="p-3 rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20">
                     <p class="font-extrabold text-[#2D3436] mb-1">1. 아이폰 (Safari)</p>
-                    <p>배포된 주소를 Safari로 열고 하단 <strong>공유 버튼(↑)</strong> → <strong>홈 화면에 추가</strong>를 누르면 앱 아이콘이 생겨요.</p>
+                    <p>배포된 주소를 Safari로 열고 하단 <strong>공유 버튼</strong> → <strong>홈 화면에 추가</strong>를 누르면 앱 아이콘이 생겨요.</p>
                   </div>
                   <div class="p-3 rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20">
                     <p class="font-extrabold text-[#2D3436] mb-1">2. 안드로이드 (Chrome)</p>
-                    <p>Chrome 우측 상단 <strong>메뉴(⋮)</strong> → <strong>앱 설치</strong> 또는 <strong>홈 화면에 추가</strong>를 누르세요.</p>
+                    <p>Chrome 우측 상단 <strong>점 세 개 메뉴</strong> → <strong>앱 설치</strong> 또는 <strong>홈 화면에 추가</strong>를 누르세요.</p>
                   </div>
                 </div>
-                <button type="button" data-action="close-modals" class="w-full py-2.5 rounded-xl bg-[#2D3436] text-white text-xs font-extrabold">확인했어요</button>
+                <button type="button" data-action="close-modals" class="w-full h-10 rounded-xl bg-[#2D3436] text-white text-xs font-extrabold">확인했어요</button>
               </div>
             </div>
           `;
@@ -1012,11 +1109,11 @@
               <img src="${AVATAR_SRC}" alt="우리사이" class="w-9 h-9 rounded-2xl object-cover border border-[#FF8A80]/30 shrink-0" />
               <div class="min-w-0">
                 <span class="text-base font-extrabold text-[#2D3436]">우리사이</span>
-                <p class="text-[11px] text-[#636E72] truncate">${esc(state.myName)} ♥ ${esc(state.partnerName)} · ${state.warmthTemp.toFixed(1)}°C</p>
+                <p class="text-xs text-[#636E72] truncate flex items-center gap-1">${esc(state.myName)} ${icon('heart', 'w-3 h-3')} ${esc(state.partnerName)} · ${state.warmthTemp.toFixed(1)}°C</p>
               </div>
             </div>
-            <button type="button" data-action="open-settings" class="w-8 h-8 rounded-xl bg-white border border-[#2D3436]/10 flex items-center justify-center text-sm shrink-0" aria-label="설정">
-              ⚙
+            <button type="button" data-action="open-settings" class="w-10 h-10 rounded-xl bg-white border border-[#2D3436]/10 text-[#636E72] hover:text-[#2D3436] flex items-center justify-center shrink-0" aria-label="설정">
+              ${icon('settings', 'w-5 h-5')}
             </button>
           </header>
 
@@ -1026,20 +1123,16 @@
           </main>
 
           <!-- 하단 모바일 네비게이션 바 -->
-          <nav class="shrink-0 bg-white border-t border-[#FF8A80]/15 px-3 pt-2 safe-bottom grid grid-cols-3 gap-1 z-20">
-            <button type="button" data-action="switch-tab" data-tab="missions" class="relative py-2 rounded-2xl flex flex-col items-center gap-0.5 transition-colors ${state.activeTab === 'missions' ? 'bg-[#FFF0EE] text-[#E0665B]' : 'text-[#636E72]'}">
-              <span class="text-base leading-none">💌</span>
-              <span class="text-[11px] font-bold">오늘의 미션</span>
-              ${otherPending > 0 ? `<span class="absolute top-1.5 right-6 w-4 h-4 rounded-full bg-[#FF8A80] text-white text-[9px] font-extrabold flex items-center justify-center">${otherPending}</span>` : ''}
-            </button>
-            <button type="button" data-action="switch-tab" data-tab="saibot" class="py-2 rounded-2xl flex flex-col items-center gap-0.5 transition-colors ${state.activeTab === 'saibot' ? 'bg-[#FFF0EE] text-[#E0665B]' : 'text-[#636E72]'}">
-              <span class="text-base leading-none">👼</span>
-              <span class="text-[11px] font-bold">사이봇 비밀방</span>
-            </button>
-            <button type="button" data-action="switch-tab" data-tab="warmth" class="py-2 rounded-2xl flex flex-col items-center gap-0.5 transition-colors ${state.activeTab === 'warmth' ? 'bg-[#FFF0EE] text-[#E0665B]' : 'text-[#636E72]'}">
-              <span class="text-base leading-none">🌡️</span>
-              <span class="text-[11px] font-bold">우리 온도</span>
-            </button>
+          <nav class="shrink-0 bg-white border-t border-[#FF8A80]/15 px-3 pt-2 safe-bottom grid grid-cols-3 gap-1 z-20" aria-label="메뉴">
+            ${[['missions', 'mail', '미션'], ['saibot', 'bot', '사이봇 비밀방'], ['warmth', 'thermometer', '우리 온도']].map(([tab, ic, label]) => {
+              const on = state.activeTab === tab;
+              const badge = tab === 'missions' && otherPending > 0 ? `<span class="absolute top-1 right-[calc(50%-1.5rem)] min-w-5 h-5 px-1 rounded-full bg-[#C2453B] text-white text-xs font-extrabold flex items-center justify-center" aria-hidden="true">${otherPending}</span>` : '';
+              return `<button type="button" data-action="switch-tab" data-tab="${tab}" ${on ? 'aria-current="page"' : ''} aria-label="${label}${badge ? ', 대기 ' + otherPending + '개' : ''}" class="relative h-14 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors ${on ? 'bg-[#FFF0EE] text-[#B83F36]' : 'text-[#636E72] hover:text-[#2D3436]'}">
+                ${icon(ic, 'w-5 h-5')}
+                <span class="text-xs font-bold">${label}</span>
+                ${badge}
+              </button>`;
+            }).join('')}
           </nav>
           ${renderModals()}
         `;
@@ -1116,7 +1209,7 @@
               : await rpc('join_couple', { p_code: code, nickname: nick });
             state.busy = false;
             if (!c || !c.code) throw new Error('empty');
-            await enterCouple(c, action === 'create-couple' ? '초대코드를 만들었어요! 연인에게 공유해 주세요 💌' : '연인과 연결됐어요! 💛');
+            await enterCouple(c, action === 'create-couple' ? '초대코드를 만들었어요! 연인에게 공유해 주세요' : '연인과 연결됐어요!');
           } catch (err) {
             state.busy = false;
             render();
@@ -1126,6 +1219,12 @@
             }
             showToast(joinErrorMessage(err));
           }
+        } else if (action === 'retry-sync') {
+          state.syncError = false;
+          render();
+          await syncFromSupabase();
+          render();
+          if (state.syncError) showToast('아직 연결이 불안정해요, 잠시 후 다시 시도해 주세요');
         } else if (action === 'switch-tab') {
           state.activeTab = btn.getAttribute('data-tab') || 'saibot';
           saveState();
@@ -1222,7 +1321,7 @@
           state.missions.unshift(newMission);
           saveState();
           render();
-          showToast('상대방 피드에 자연스러운 데일리 미션이 도착했어요 ✨');
+          showToast('연인에게 미션을 보냈어요');
         } else if (action === 'accept-mission') {
           const id = btn.getAttribute('data-id');
           const mission = state.missions.find((m) => m.id === id);
@@ -1262,7 +1361,7 @@
             mission.accepting = false;
             saveState();
             render();
-            showToast('다정함 스탬프 완료! 온도가 올랐어요 💛');
+            showToast('미션 완료! 우리 온도가 올랐어요');
           } catch (_e) {
             mission.accepting = false;
             mission.accepted = false;
@@ -1298,7 +1397,7 @@
             showToast('저장에 실패했어요, 다시 시도해 주세요');
           }
         } else if (action === 'share-code') {
-          const text = '우리사이 초대 코드: ' + state.coupleCode + '\n' + location.origin + location.pathname + ' 에서 카카오로 시작한 뒤 "초대코드 입력"에 넣어 주세요 💛';
+          const text = '우리사이 초대 코드: ' + state.coupleCode + '\n' + location.origin + location.pathname + ' 에서 카카오로 시작한 뒤 "초대코드 입력"에 넣어 주세요';
           try {
             if (navigator.share) {
               await navigator.share({ title: '우리사이', text: text });
