@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#FFF9F5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="우리사이" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <link rel="icon" href="./icon-192.png" />
+  <title>우리사이 - 커플 감정 번역 & 다정함 코칭</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    html, body {
+      background-color: #FFF9F5;
+      color: #2D3436;
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Inter", sans-serif;
+      overscroll-behavior-y: none;
+    }
+    .safe-top { padding-top: max(14px, env(safe-area-inset-top)); }
+    .safe-bottom { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    @keyframes popIn {
+      0% { opacity: 0; transform: translateY(8px) scale(0.98); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .animate-pop { animation: popIn 0.25s ease-out forwards; }
+  </style>
+</head>
+<body class="min-h-screen flex justify-center bg-[#F4ECE6]">
+  <!-- 모바일 앱 컨테이너 (폰에서는 전체 화면, 데스크톱에서는 깔끔한 모바일 뷰포트) -->
+  <div id="app" class="w-full max-w-[440px] min-h-screen bg-[#FFF9F5] shadow-[0_0_40px_rgba(45,52,54,0.08)] flex flex-col relative overflow-x-hidden">
+    <!-- JS가 마운트 -->
+  </div>
+
+  <!-- 토스트 컨테이너 -->
+  <div id="toast" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 hidden max-w-[380px] w-[90%] bg-[#2D3436] text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl text-center"></div>
+
+  <script>
+    (function () {
+      const AVATAR_SRC = "./icon-192.png";
+      const STORAGE_KEY = "urisai_mobile_state_v1";
+
+      // PWA Service Worker 등록 (HTTPS 호스팅 환경에서만 동작)
+      if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js').catch(() => {});
+        });
+      }
+
+      const QUICK_TAGS = [
+        { label: '#스마트폰집중', sample: '밥 먹는데 계속 폰만 봐서 너무 서운하고 화났어' },
+        { label: '#연락빈도', sample: '하루 종일 바쁘다고 연락 한 통도 없어서 나만 기다리는 기분이야' },
+        { label: '#표현부족', sample: '요즘 나한테 예쁘다거나 좋아한다는 표현을 너무 안 해줘서 외로워' },
+        { label: '#데이트코스', sample: '맨날 데이트 코스 나만 짜는 것 같아서 좀 지치고 아쉬워' },
+        { label: '#말투서운함', sample: '피곤한 건 알겠는데 방금 말투가 너무 차갑고 퉁명스러워서 상처받았어' }
+      ];
+
+      const NUDGE_LIBRARY = {
+        phone: {
+          tagName: '스마트폰 집중',
+          empathy: '함께 있는 소중한 시간인데 나보다 화면을 더 오래 보는 것 같으면 당연히 마음이 헛헛하고 속상하죠. 그 서운함, 제가 조용히 안아드릴게요. 상대방이 전혀 눈치채지 못하게 오늘 밤 눈 맞추는 시간을 자연스럽게 만들어 볼까요?',
+          drafts: [
+            { title: '디지털 디톡스 15분 챌린지', badge: '오늘의 데일리 미션', message: "오늘 밤 두 분만의 '디지털 디톡스 15분' 어때요? 폰은 잠시 뒤집어 두고, 서로 눈 맞추며 오늘 가장 웃겼던 일 하나씩만 이야기해 보세요!" },
+            { title: '식사 시간 눈맞춤 타임', badge: '커플 추천 팁', message: '다음에 같이 밥 먹을 땐 두 분 다 폰을 가방 속에 쏙 넣어두고, 서로의 표정을 보며 천천히 대화해 보는 건 어떨까요?' }
+          ]
+        },
+        contact: {
+          tagName: '연락 빈도',
+          empathy: '기다리는 시간은 실제보다 훨씬 길게 느껴지잖아요. 바쁠 거라 이해하려 해도 막상 연락이 뜸하면 마음이 작아질 수밖에 없어요. 부담 주지 않으면서도 반가운 연락이 먼저 오도록 살짝 신호를 띄워볼게요.',
+          drafts: [
+            { title: '하늘 사진 한 장 & 짧은 안부', badge: '오늘의 데일리 미션', message: '바쁜 하루 중 딱 10초! 지금 보이는 풍경이나 마시는 커피 사진 한 장과 함께 "지금 문득 네 생각났어"라고 먼저 톡 보내보는 건 어때요?' },
+            { title: '퇴근 전 1분 목소리 선물', badge: '커플 추천 팁', message: '메시지 대신 오늘 저녁엔 짧은 음성 메시지나 1분 통화로 "오늘 하루 어땠어?" 하고 다정하게 안부를 물어봐 주세요!' }
+          ]
+        },
+        affection: {
+          tagName: '표현 부족',
+          empathy: '마음이야 알지만 가끔은 말과 행동으로 확인받고 싶을 때가 있잖아요. 상대방이 오늘 자연스럽게 애정을 듬뿍 표현할 수 있는 따뜻한 미션을 보내볼게요.',
+          drafts: [
+            { title: '오늘의 진심 한 문장 전하기', badge: '오늘의 데일리 미션', message: '익숙함에 잠시 아껴두었던 말, 오늘은 꼭 꺼내볼까요? 상대방의 좋은 점 한 가지를 콕 집어 "난 너의 이런 점이 참 좋아"라고 말해 주세요!' },
+            { title: '말없이 5초 꼭 안아주기', badge: '커플 추천 팁', message: '오늘 만나면 아무 말 없이 5초만 꽉 안아주는 건 어때요? 백 마디 말보다 따뜻한 포옹 한 번이 마음을 가장 빠르게 채워준대요.' }
+          ]
+        },
+        date: {
+          tagName: '데이트 코스',
+          empathy: '매번 먼저 고민하고 준비하다 보면 나만 애쓰는 기분이 들기 마련이에요. 이번엔 상대방이 설레는 마음으로 먼저 데이트 아이디어를 꺼낼 수 있게 슬쩍 영감을 불어넣어 줄게요!',
+          drafts: [
+            { title: '이번 주말 비밀 코스 제안하기', badge: '데이트 추천 미션', message: '이번 데이트는 내가 먼저 깜짝 제안 어때요? 가보고 싶었던 맛집이나 예쁜 카페 2곳을 골라 "우리 여기 갈까?" 하고 먼저 물어봐 주세요!' },
+            { title: '우리만의 소확행 산책 루트', badge: '커플 추천 팁', message: '거창한 계획이 아니어도 좋아요. 이번 주엔 연인과 함께 걷고 싶은 동네나 디저트 가게를 하나 정해서 먼저 데이트 신청을 해보세요!' }
+          ]
+        },
+        tone: {
+          tagName: '말투 서운함',
+          empathy: '가까운 사이라서 더 쉽게 상처받는 게 말투인 것 같아요. 상대방이 오늘 부드러운 온도로 먼저 말을 걸어올 수 있게 다정한 대화 넛지를 준비했어요.',
+          drafts: [
+            { title: '다정한 말끝 쿠션 미션', badge: '오늘의 데일리 미션', message: '피곤한 날일수록 말끝에 다정함을 한 스푼 더해보는 건 어때요? 오늘 대화할 땐 "고마워", "그랬구나~" 같은 따뜻한 리액션을 한 번 더 건네보세요.' },
+            { title: '오늘 고마웠던 일 하나 말하기', badge: '커플 추천 팁', message: '잠시 숨을 고르고 연인에게 "오늘 네 덕분에 힘이 났어" 혹은 "항상 내 편 되어줘서 고마워" 하고 부드럽게 먼저 말을 걸어보는 건 어떨까요?' }
+          ]
+        },
+        default: {
+          tagName: '마음 돌보기',
+          empathy: '말로 꺼내기 쉽지 않은 속마음을 솔직하게 들려줘서 고마워요. 상대방이 오늘 유난히 다정하게 다가올 수 있도록 자연스러운 미션을 만들어 드릴게요.',
+          drafts: [
+            { title: '오늘의 다정함 10분 티타임', badge: '오늘의 데일리 미션', message: '오늘 저녁엔 따뜻한 음료 한 잔과 함께 "요즘 혹시 힘든 일 없어?" 하고 연인의 마음을 먼저 토닥여 주는 10분을 가져보는 건 어때요?' },
+            { title: '서로의 하루를 안아주는 한마디', badge: '다정함 리마인더', message: '오늘 하루가 끝나기 전에 "오늘도 수고 많았어, 네가 있어 참 다행이야"라는 말로 따뜻한 마무리를 선물해 보세요.' }
+          ]
+        }
+      };
+
+      const BASELINE_MISSIONS = [
+        {
+          id: 'base-1',
+          targetRole: 'BOTH',
+          title: '퇴근길 깜짝 간식 서프라이즈',
+          badge: '오늘의 커플 추천 팁',
+          message: '오늘 퇴근길에 상대방이 좋아하는 간식 하나 사 가는 건 어때요? 작은 서프라이즈가 하루의 피로를 사르르 녹여줄 거예요.',
+          time: '오늘 오전 9:30',
+          accepted: false
+        },
+        {
+          id: 'base-2',
+          targetRole: 'BOTH',
+          title: '추억 사진 한 장 꺼내보기',
+          badge: '데일리 미션 카드',
+          message: '함께 찍었던 사진 중 제일 마음에 드는 한 장을 골라 "이때 진짜 좋았지!" 하고 슬쩍 보내보세요.',
+          time: '어제',
+          accepted: true
+        }
+      ];
+
+      function detectCategory(text) {
+        const s = text.toLowerCase();
+        if (/폰|스마트폰|핸드폰|휴대폰|유튜브|인스타|릴스|게임|화면|만 보|만봐/.test(s)) return 'phone';
+        if (/연락|답장|읽씹|카톡|톡|전화|바빠|바쁘|바쁨|무소식|기다리/.test(s)) return 'contact';
+        if (/표현|사랑|좋아|예쁘|애정|스킨십|안아|고마|관심|무심|외로/.test(s)) return 'affection';
+        if (/데이트|코스|계획|약속|주말|식당|카페|매번 나만|맨날 나만/.test(s)) return 'date';
+        if (/말투|짜증|화내|차가|무뚝뚝|단답|퉁명|상처|예민/.test(s)) return 'tone';
+        return 'default';
+      }
+
+      function randomCoupleCode() {
+        const num = Math.floor(1000 + Math.random() * 9000);
+        return 'S2-' + num;
+      }
+
+      function nowStr() {
+        const d = new Date();
+        const h = d.getHours();
+        const m = String(d.getMinutes()).padStart(2, '0');
+        return (h >= 12 ? '오후 ' : '오전 ') + (h % 12 || 12) + ':' + m;
+      }
+
+      function defaultState() {
+        return {
+          onboarded: false,
+          myName: '지수',
+          partnerName: '민준',
+          role: 'A', // 'A' or 'B'
+          coupleCode: 'S2-4829',
+          activeTab: 'saibot', // 'missions' | 'saibot' | 'warmth'
+          warmthTemp: 37.5,
+          completedCount: 2,
+          missions: BASELINE_MISSIONS.slice(),
+          chats: {
+            A: [
+              { id: 'w-a', sender: 'bot', type: 'welcome', text: '안녕! 오늘 연인에게 서운했거나 아쉬웠던 점을 솔직하게 털어놓아 주세요. (상대방에겐 절대 그대로 전달되지 않아요 🤫)', time: '방금 전' }
+            ],
+            B: [
+              { id: 'w-b', sender: 'bot', type: 'welcome', text: '안녕! 오늘 연인에게 서운했거나 아쉬웠던 점을 솔직하게 털어놓아 주세요. (상대방에겐 절대 그대로 전달되지 않아요 🤫)', time: '방금 전' }
+            ]
+          },
+          draftInput: '',
+          showSettings: false,
+          showInstallGuide: false,
+          supabaseUrl: '',
+          supabaseKey: '',
+          geminiKey: '',
+          syncStatus: '로컬 체험 모드'
+        };
+      }
+
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return defaultState();
+          const parsed = JSON.parse(raw);
+          return Object.assign(defaultState(), parsed);
+        } catch (_e) {
+          return defaultState();
+        }
+      }
+
+      let state = loadState();
+      let syncTimer = null;
+
+      function saveState() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (_e) {}
+      }
+
+      function showToast(msg) {
+        const el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.remove('hidden');
+        clearTimeout(el._t);
+        el._t = setTimeout(() => el.classList.add('hidden'), 2600);
+      }
+
+      function esc(str) {
+        return String(str || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      // Supabase REST 헬퍼 (설정된 경우에만 호출)
+      async function sbFetch(path, options) {
+        if (!state.supabaseUrl || !state.supabaseKey) return null;
+        const base = state.supabaseUrl.replace(/\/$/, '');
+        try {
+          const res = await fetch(base + '/rest/v1/' + path, Object.assign({
+            headers: {
+              apikey: state.supabaseKey,
+              Authorization: 'Bearer ' + state.supabaseKey,
+              'Content-Type': 'application/json',
+              Prefer: 'return=representation'
+            }
+          }, options || {}));
+          if (!res.ok) return null;
+          return await res.json();
+        } catch (_e) {
+          return null;
+        }
+      }
+
+      async function syncFromSupabase() {
+        if (!state.onboarded || !state.supabaseUrl || !state.supabaseKey) return;
+        const couples = await sbFetch('couples?code=eq.' + encodeURIComponent(state.coupleCode));
+        if (couples && couples.length > 0) {
+          state.warmthTemp = Number(couples[0].warmth_temp) || state.warmthTemp;
+          state.completedCount = Number(couples[0].completed_count) || state.completedCount;
+          state.syncStatus = '실시간 동기화 중';
+        }
+        const rows = await sbFetch('daily_missions?couple_code=eq.' + encodeURIComponent(state.coupleCode) + '&order=created_at.desc');
+        if (rows && Array.isArray(rows)) {
+          const remoteMissions = rows.map((r) => ({
+            id: r.id,
+            targetRole: r.target_role,
+            title: r.title,
+            badge: r.badge,
+            message: r.message,
+            time: '도착함',
+            accepted: Boolean(r.accepted)
+          }));
+          state.missions = remoteMissions.concat(BASELINE_MISSIONS);
+          saveState();
+          render();
+        }
+      }
+
+      function startSyncLoop() {
+        if (syncTimer) clearInterval(syncTimer);
+        if (state.supabaseUrl && state.supabaseKey && state.onboarded) {
+          syncFromSupabase();
+          syncTimer = setInterval(syncFromSupabase, 6000);
+        }
+      }
+
+      async function ensureCoupleRow() {
+        if (!state.supabaseUrl || !state.supabaseKey) return;
+        await sbFetch('couples', {
+          method: 'POST',
+          headers: {
+            apikey: state.supabaseKey,
+            Authorization: 'Bearer ' + state.supabaseKey,
+            'Content-Type': 'application/json',
+            Prefer: 'resolution=ignore-duplicates'
+          },
+          body: JSON.stringify({
+            code: state.coupleCode,
+            warmth_temp: state.warmthTemp,
+            completed_count: state.completedCount
+          })
+        });
+      }
+
+      async function translateEmotion(text) {
+        const cat = detectCategory(text);
+        const preset = NUDGE_LIBRARY[cat] || NUDGE_LIBRARY.default;
+
+        if (state.geminiKey && state.geminiKey.trim()) {
+          try {
+            const prompt = `당신은 커플 관계 코칭 AI '사이봇'입니다. 연인이 서운한 감정을 털어놓았습니다: "${text}"
+반드시 JSON으로만 답하세요(코드블록 없이):
+{"empathy":"깊이 공감하고 위로하는 따뜻한 한국어 2문장","title":"상대방에게 보낼 자연스러운 데일리 미션 제목(15자 이내)","message":"서운함이 전혀 티 나지 않는 자연스러운 커플 추천 미션 문구(한국어 2문장)"}`;
+            const res = await fetch(
+              'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' +
+                encodeURIComponent(state.geminiKey.trim()),
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+              }
+            );
+            if (res.ok) {
+              const json = await res.json();
+              const out = (json.candidates && json.candidates[0] && json.candidates[0].content.parts[0].text) || '';
+              const parsed = JSON.parse(out.replace(/```json|```/g, '').trim());
+              if (parsed.empathy && parsed.message) {
+                return {
+                  empathy: parsed.empathy,
+                  drafts: [{ title: parsed.title || '오늘의 다정함 미션', badge: '오늘의 데일리 미션', message: parsed.message }].concat(preset.drafts)
+                };
+              }
+            }
+          } catch (_e) {}
+        }
+        return { empathy: preset.empathy, drafts: preset.drafts };
+      }
+
+      function renderOnboarding() {
+        return `
+          <div class="flex-1 flex flex-col justify-between px-6 py-10 safe-top safe-bottom">
+            <div class="text-center mt-4">
+              <img src="${AVATAR_SRC}" alt="사이봇" class="w-24 h-24 rounded-3xl mx-auto object-cover border-2 border-[#FF8A80]/40 shadow-md" />
+              <span class="inline-block mt-4 px-3 py-1 rounded-full bg-[#FF8A80]/15 text-[#E0665B] text-[11px] font-bold">커플 감정 번역 & 다정함 코칭</span>
+              <h1 class="text-2xl font-extrabold text-[#2D3436] mt-2 tracking-tight">우리사이 시작하기</h1>
+              <p class="text-xs text-[#636E72] mt-2 leading-relaxed">
+                서운한 마음은 사이봇에게만 털어놓으세요.<br />
+                상대방에겐 티 나지 않는 따뜻한 데일리 미션으로 도착해요.
+              </p>
+            </div>
+
+            <div class="bg-white rounded-3xl p-5 shadow-[0_8px_28px_rgba(45,52,54,0.06)] border border-[#FF8A80]/20 space-y-4 my-6">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-[11px] font-bold text-[#636E72] mb-1">내 닉네임</label>
+                  <input id="ob-my-name" type="text" value="${esc(state.myName)}" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-[#636E72] mb-1">연인 닉네임</label>
+                  <input id="ob-partner-name" type="text" value="${esc(state.partnerName)}" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-bold text-[#636E72] mb-1">우리 커플 초대 코드</label>
+                <div class="flex gap-2">
+                  <input id="ob-code" type="text" value="${esc(state.coupleCode)}" class="flex-1 px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-mono font-bold tracking-wider uppercase focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
+                  <button type="button" data-action="regen-code" class="px-3 py-2 rounded-xl bg-[#FFF0EE] text-[#E0665B] text-xs font-bold hover:bg-[#FF8A80] hover:text-white transition-colors">새 코드</button>
+                </div>
+                <p class="text-[10px] text-[#9AA5A9] mt-1">연인과 같은 코드를 입력하면 두 핸드폰이 연결돼요.</p>
+              </div>
+
+              <div>
+                <label class="block text-[11px] font-bold text-[#636E72] mb-1.5">내 기기 역할 선택</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <button type="button" data-action="pick-role" data-role="A" class="py-2.5 rounded-xl text-xs font-bold border transition-all ${state.role === 'A' ? 'bg-[#FF8A80] text-white border-[#FF8A80] shadow-sm' : 'bg-[#FFF9F5] text-[#636E72] border-[#FF8A80]/25'}">
+                    나 (A 기기)
+                  </button>
+                  <button type="button" data-action="pick-role" data-role="B" class="py-2.5 rounded-xl text-xs font-bold border transition-all ${state.role === 'B' ? 'bg-[#FFB74D] text-white border-[#FFB74D] shadow-sm' : 'bg-[#FFF9F5] text-[#636E72] border-[#FFB74D]/40'}">
+                    연인 (B 기기)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-2.5">
+              <button type="button" data-action="start-app" class="w-full py-3.5 rounded-2xl bg-[#FF8A80] hover:bg-[#F26D63] active:scale-[0.99] text-white text-sm font-extrabold shadow-[0_6px_20px_rgba(255,138,128,0.4)] transition-all">
+                우리사이 입장하기 💛
+              </button>
+              <button type="button" data-action="open-install" class="w-full py-2.5 rounded-2xl bg-white border border-[#2D3436]/10 text-xs font-bold text-[#636E72] hover:text-[#2D3436]">
+                📱 아이폰 · 안드로이드 홈 화면에 앱으로 설치하는 법
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderMissionsTab() {
+        // 현재 내 역할에게 온 미션 + 공통 데일리 팁만 노출 (상대방 불만 0%)
+        const visibleMissions = state.missions.filter((m) => m.targetRole === 'BOTH' || m.targetRole === state.role);
+        const pendingCount = visibleMissions.filter((m) => !m.accepted).length;
+
+        return `
+          <div class="flex-1 overflow-y-auto px-4 py-4 space-y-3.5">
+            <div class="bg-gradient-to-r from-[#FF8A80] to-[#FFA096] rounded-2xl p-4 text-white shadow-[0_6px_20px_rgba(255,138,128,0.28)]">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-[11px] font-semibold text-white/85">${esc(state.myName)} ♥ ${esc(state.partnerName)} · 코드 ${esc(state.coupleCode)}</p>
+                  <p class="text-base font-extrabold mt-0.5">우리의 다정함 온도 ${state.warmthTemp.toFixed(1)}°C</p>
+                </div>
+                <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-extrabold text-sm">
+                  ${state.completedCount}회
+                </div>
+              </div>
+              <div class="mt-3 w-full h-1.5 bg-white/30 rounded-full overflow-hidden">
+                <div class="h-full bg-white rounded-full transition-all duration-500" style="width:${Math.min(100, Math.max(12, ((state.warmthTemp - 35) / 10) * 100))}%"></div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between px-1 pt-1">
+              <h2 class="text-sm font-extrabold text-[#2D3436]">오늘 도착한 커플 추천 팁</h2>
+              <span class="text-xs font-semibold text-[#636E72]">대기 ${pendingCount}개</span>
+            </div>
+
+            ${visibleMissions.map((m) => `
+              <div class="animate-pop bg-white rounded-2xl p-4 border ${!m.accepted && m.targetRole === state.role ? 'border-[#FF8A80] ring-2 ring-[#FF8A80]/15' : 'border-[#2D3436]/8'} shadow-[0_4px_16px_rgba(45,52,54,0.05)] relative">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-[11px] font-bold text-[#FF8A80] bg-[#FFF0EE] px-2.5 py-0.5 rounded-full">${esc(m.badge)}</span>
+                  <span class="text-[10px] text-[#9AA5A9]">${esc(m.time)}</span>
+                </div>
+                <h3 class="text-[15px] font-extrabold text-[#2D3436] mb-1.5">${esc(m.title)}</h3>
+                <p class="text-[13px] text-[#4A5568] leading-relaxed">${esc(m.message)}</p>
+                <div class="mt-3.5 pt-3 border-t border-[#2D3436]/5">
+                  ${!m.accepted ? `
+                    <button type="button" data-action="accept-mission" data-id="${esc(m.id)}" class="w-full py-2.5 rounded-xl bg-[#FFF0EE] hover:bg-[#FF8A80] text-[#E0665B] hover:text-white text-xs font-extrabold transition-all border border-[#FF8A80]/30">
+                      오늘 해볼게요! 💛
+                    </button>
+                  ` : `
+                    <div class="flex items-center justify-between bg-[#E8F8F0] text-[#1E8449] px-3 py-2 rounded-xl text-xs font-bold">
+                      <span>✓ 다정함 스탬프 완료!</span>
+                      <span class="text-[10px] opacity-80">+1.2°C</span>
+                    </div>
+                  `}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      function renderSaibotTab() {
+        const list = state.chats[state.role] || [];
+        return `
+          <div class="flex-1 flex flex-col min-h-0">
+            <div id="chat-scroll" class="flex-1 overflow-y-auto px-4 py-4 space-y-3.5">
+              ${list.map((msg) => {
+                if (msg.sender === 'user') {
+                  return `
+                    <div class="flex flex-col items-end animate-pop">
+                      <div class="max-w-[85%] bg-[#2D3436] text-white rounded-2xl rounded-tr-sm px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm">
+                        ${esc(msg.text)}
+                      </div>
+                      <span class="mt-1 text-[10px] text-[#9AA5A9]">🔒 나만 보는 비밀 기록 · ${esc(msg.time)}</span>
+                    </div>
+                  `;
+                }
+                if (msg.type === 'welcome' || msg.type === 'notice') {
+                  return `
+                    <div class="flex items-start gap-2 animate-pop">
+                      <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
+                      <div class="max-w-[85%] ${msg.type === 'notice' ? 'bg-[#FFF8E7] border-[#FFB74D]/50' : 'bg-white border-[#FF8A80]/15'} rounded-2xl rounded-tl-sm px-3.5 py-3 border shadow-sm">
+                        <p class="text-[13px] text-[#2D3436] leading-relaxed">${esc(msg.text)}</p>
+                      </div>
+                    </div>
+                  `;
+                }
+                const draft = msg.drafts[msg.draftIdx || 0];
+                return `
+                  <div class="flex items-start gap-2 animate-pop">
+                    <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
+                    <div class="flex-1 space-y-2.5 min-w-0">
+                      <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-sm">
+                        <p class="text-[11px] font-bold text-[#FF8A80] mb-1">사이봇의 공감</p>
+                        <p class="text-[13px] text-[#2D3436] leading-relaxed">${esc(msg.empathy)}</p>
+                      </div>
+                      <div class="bg-gradient-to-br from-white to-[#FFF3F0] rounded-2xl p-3.5 border border-[#FF8A80]/35 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FF8A80]/15 text-[#D95B50]">✨ 시치미 뚝 뗀 넛지 초안</span>
+                          ${!msg.sent ? `<button type="button" data-action="shuffle-draft" data-id="${esc(msg.id)}" class="text-[11px] font-bold text-[#636E72] hover:text-[#FF8A80]">다른 표현</button>` : ''}
+                        </div>
+                        <div class="bg-white rounded-xl p-3 border border-[#FF8A80]/15">
+                          <p class="text-[10px] font-bold text-[#FF8A80] mb-1">${esc(draft.badge)} · ${esc(draft.title)}</p>
+                          <p class="text-[12.5px] text-[#2D3436] leading-relaxed font-medium">“${esc(draft.message)}”</p>
+                        </div>
+                        <div class="mt-2.5">
+                          ${!msg.sent ? `
+                            <button type="button" data-action="send-nudge" data-id="${esc(msg.id)}" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">
+                              이대로 슬쩍 신호 보내기 ✨
+                            </button>
+                          ` : `
+                            <div class="w-full py-2 rounded-xl bg-[#FFF0EE] text-[#E0665B] text-xs font-bold text-center border border-[#FF8A80]/30">
+                              ✓ 연인 피드에 자연스럽게 도착했어요
+                            </div>
+                          `}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+
+            <!-- 빠른 태그 + 입력창 -->
+            <div class="bg-white border-t border-[#FF8A80]/15 px-3.5 pt-2.5 pb-3">
+              <div class="flex gap-1.5 overflow-x-auto pb-2 no-scrollbar">
+                ${QUICK_TAGS.map((t) => `
+                  <button type="button" data-action="quick-tag" data-sample="${esc(t.sample)}" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#FFF9F5] text-[#2D3436] border border-[#FF8A80]/30 hover:bg-[#FF8A80] hover:text-white transition-colors">
+                    ${esc(t.label)}
+                  </button>
+                `).join('')}
+              </div>
+              <div class="flex items-end gap-2 bg-[#FFF9F5] rounded-2xl border border-[#FF8A80]/30 px-3 py-2">
+                <textarea id="emotion-input" rows="2" placeholder="서운했거나 아쉬웠던 점을 솔직하게 털어놓아 주세요..." class="flex-1 bg-transparent text-[13px] text-[#2D3436] placeholder-[#9AA5A9] focus:outline-none resize-none leading-snug">${esc(state.draftInput)}</textarea>
+                <button type="button" data-action="send-emotion" class="w-9 h-9 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white flex items-center justify-center shrink-0 shadow-sm font-bold text-sm">
+                  ↑
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderWarmthTab() {
+        const mySent = (state.chats[state.role] || []).filter((m) => m.sent);
+        return `
+          <div class="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+            <div class="bg-white rounded-3xl p-5 border border-[#FF8A80]/20 shadow-sm text-center">
+              <p class="text-xs font-bold text-[#FF8A80]">우리 커플 다정함 리포트</p>
+              <p class="text-4xl font-extrabold text-[#2D3436] mt-2">${state.warmthTemp.toFixed(1)}°C</p>
+              <p class="text-xs text-[#636E72] mt-1">함께 달성한 다정함 미션 ${state.completedCount}회</p>
+              <div class="mt-4 w-full h-2.5 bg-[#FFF0EE] rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-[#FFAB91] to-[#FF8A80] rounded-full" style="width:${Math.min(100, Math.max(12, ((state.warmthTemp - 35) / 10) * 100))}%"></div>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-[#2D3436]">현재 연결 상태</span>
+                <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#FFF0EE] text-[#E0665B]">${esc(state.syncStatus)}</span>
+              </div>
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-[#636E72]">커플 초대 코드</span>
+                <div class="flex items-center gap-2">
+                  <span class="font-mono font-extrabold text-[#2D3436]">${esc(state.coupleCode)}</span>
+                  <button type="button" data-action="copy-code" class="px-2 py-1 rounded-lg bg-[#FFF9F5] border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
+                </div>
+              </div>
+              <div class="pt-2 border-t border-[#2D3436]/5 flex items-center justify-between">
+                <span class="text-xs text-[#636E72]">현재 내 기기 역할: <strong class="text-[#2D3436]">${state.role === 'A' ? state.myName + ' (A)' : state.partnerName + ' (B)'}</strong></span>
+                <button type="button" data-action="toggle-role" class="px-2.5 py-1.5 rounded-xl bg-[#2D3436] text-white text-[11px] font-bold">
+                  상대방 기기로 전환해 보기
+                </button>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm">
+              <h3 class="text-xs font-extrabold text-[#2D3436] mb-2">내가 보낸 다정함 신호 (${mySent.length}건)</h3>
+              ${mySent.length === 0 ? `<p class="text-xs text-[#9AA5A9]">아직 보낸 신호가 없어요. 사이봇 탭에서 속마음을 털어놓아 보세요.</p>` : mySent.map((s) => {
+                const d = s.drafts[s.draftIdx || 0];
+                return `<div class="py-2 border-t border-[#2D3436]/5 first:border-t-0 text-xs">
+                  <p class="font-bold text-[#FF8A80]">${esc(d.title)}</p>
+                  <p class="text-[#4A5568] mt-0.5">${esc(d.message)}</p>
+                </div>`;
+              }).join('')}
+            </div>
+
+            <button type="button" data-action="open-install" class="w-full py-3 rounded-2xl bg-white border border-[#FF8A80]/30 text-xs font-extrabold text-[#E0665B]">
+              📱 핸드폰 홈 화면에 앱으로 설치하기 가이드
+            </button>
+          </div>
+        `;
+      }
+
+      function renderModals() {
+        let html = '';
+        if (state.showSettings) {
+          html += `
+            <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
+              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 space-y-4 shadow-2xl max-h-[88vh] overflow-y-auto">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-base font-extrabold text-[#2D3436]">실시간 연동 & AI 설정</h3>
+                  <button type="button" data-action="close-modals" class="text-sm font-bold text-[#636E72] px-2 py-1">닫기</button>
+                </div>
+                <div class="space-y-3 text-xs">
+                  <div>
+                    <label class="block font-bold text-[#2D3436] mb-1">Supabase Project URL (2인 실시간 동기화)</label>
+                    <input id="set-sb-url" type="url" value="${esc(state.supabaseUrl)}" placeholder="https://xxxxx.supabase.co" class="w-full px-3 py-2 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30" />
+                  </div>
+                  <div>
+                    <label class="block font-bold text-[#2D3436] mb-1">Supabase Anon Public Key</label>
+                    <input id="set-sb-key" type="password" value="${esc(state.supabaseKey)}" placeholder="eyJhbGciOi..." class="w-full px-3 py-2 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30" />
+                  </div>
+                  <div>
+                    <label class="block font-bold text-[#2D3436] mb-1">Gemini API Key (선택 · 미입력 시 스마트 엔진 사용)</label>
+                    <input id="set-gem-key" type="password" value="${esc(state.geminiKey)}" placeholder="AIza..." class="w-full px-3 py-2 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30" />
+                  </div>
+                </div>
+                <div class="flex gap-2 pt-2">
+                  <button type="button" data-action="reset-all" class="px-3.5 py-2.5 rounded-xl bg-gray-100 text-xs font-bold text-[#636E72]">초기화</button>
+                  <button type="button" data-action="save-settings" class="flex-1 py-2.5 rounded-xl bg-[#FF8A80] text-white text-xs font-extrabold">저장하고 연결하기</button>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        if (state.showInstallGuide) {
+          html += `
+            <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
+              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 space-y-3.5 shadow-2xl">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-base font-extrabold text-[#2D3436]">📱 핸드폰에 앱으로 설치하기</h3>
+                  <button type="button" data-action="close-modals" class="text-sm font-bold text-[#636E72] px-2 py-1">닫기</button>
+                </div>
+                <div class="space-y-2.5 text-xs text-[#4A5568] leading-relaxed">
+                  <div class="p-3 rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20">
+                    <p class="font-extrabold text-[#2D3436] mb-1">1. 아이폰 (Safari)</p>
+                    <p>배포된 주소를 Safari로 열고 하단 <strong>공유 버튼(↑)</strong> → <strong>홈 화면에 추가</strong>를 누르면 앱 아이콘이 생겨요.</p>
+                  </div>
+                  <div class="p-3 rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20">
+                    <p class="font-extrabold text-[#2D3436] mb-1">2. 안드로이드 (Chrome)</p>
+                    <p>Chrome 우측 상단 <strong>메뉴(⋮)</strong> → <strong>앱 설치</strong> 또는 <strong>홈 화면에 추가</strong>를 누르세요.</p>
+                  </div>
+                </div>
+                <button type="button" data-action="close-modals" class="w-full py-2.5 rounded-xl bg-[#2D3436] text-white text-xs font-extrabold">확인했어요</button>
+              </div>
+            </div>
+          `;
+        }
+        return html;
+      }
+
+      function render() {
+        const root = document.getElementById('app');
+        if (!root) return;
+
+        if (!state.onboarded) {
+          root.innerHTML = renderOnboarding() + renderModals();
+          return;
+        }
+
+        const otherPending = state.missions.filter((m) => !m.accepted && (m.targetRole === 'BOTH' || m.targetRole === state.role)).length;
+
+        root.innerHTML = `
+          <!-- 상단 앱바 -->
+          <header class="bg-[#FFF9F5] border-b border-[#FF8A80]/15 px-4 pb-3 safe-top flex items-center justify-between sticky top-0 z-20">
+            <div class="flex items-center gap-2.5">
+              <img src="${AVATAR_SRC}" alt="우리사이" class="w-9 h-9 rounded-2xl object-cover border border-[#FF8A80]/30" />
+              <div>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-base font-extrabold text-[#2D3436]">우리사이</span>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${state.role === 'A' ? 'bg-[#FF8A80]/15 text-[#E0665B]' : 'bg-[#FFB74D]/20 text-[#C67C00]'}">
+                    ${state.role === 'A' ? esc(state.myName) + ' (A)' : esc(state.partnerName) + ' (B)'}
+                  </span>
+                </div>
+                <p class="text-[10px] text-[#636E72]">${esc(state.syncStatus)} · ${state.warmthTemp.toFixed(1)}°C</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button type="button" data-action="toggle-role" class="px-2.5 py-1.5 rounded-xl bg-white border border-[#FF8A80]/25 text-[11px] font-bold text-[#2D3436]">
+                ${state.role === 'A' ? 'B 화면 보기' : 'A 화면 보기'}
+              </button>
+              <button type="button" data-action="open-settings" class="w-8 h-8 rounded-xl bg-white border border-[#2D3436]/10 flex items-center justify-center text-sm" aria-label="설정">
+                ⚙
+              </button>
+            </div>
+          </header>
+
+          <!-- 메인 탭 뷰 -->
+          <main class="flex-1 flex flex-col min-h-0">
+            ${state.activeTab === 'missions' ? renderMissionsTab() : state.activeTab === 'saibot' ? renderSaibotTab() : renderWarmthTab()}
+          </main>
+
+          <!-- 하단 모바일 네비게이션 바 -->
+          <nav class="bg-white border-t border-[#FF8A80]/15 px-3 pt-2 safe-bottom grid grid-cols-3 gap-1 sticky bottom-0 z-20">
+            <button type="button" data-action="switch-tab" data-tab="missions" class="relative py-2 rounded-2xl flex flex-col items-center gap-0.5 transition-colors ${state.activeTab === 'missions' ? 'bg-[#FFF0EE] text-[#E0665B]' : 'text-[#636E72]'}">
+              <span class="text-base leading-none">💌</span>
+              <span class="text-[11px] font-bold">오늘의 미션</span>
+              ${otherPending > 0 ? `<span class="absolute top-1.5 right-6 w-4 h-4 rounded-full bg-[#FF8A80] text-white text-[9px] font-extrabold flex items-center justify-center">${otherPending}</span>` : ''}
+            </button>
+            <button type="button" data-action="switch-tab" data-tab="saibot" class="py-2 rounded-2xl flex flex-col items-center gap-0.5 transition-colors ${state.activeTab === 'saibot' ? 'bg-[#FFF0EE] text-[#E0665B]' : 'text-[#636E72]'}">
+              <span class="text-base leading-none">👼</span>
+              <span class="text-[11px] font-bold">사이봇 비밀방</span>
+            </button>
+            <button type="button" data-action="switch-tab" data-tab="warmth" class="py-2 rounded-2xl flex flex-col items-center gap-0.5 transition-colors ${state.activeTab === 'warmth' ? 'bg-[#FFF0EE] text-[#E0665B]' : 'text-[#636E72]'}">
+              <span class="text-base leading-none">🌡️</span>
+              <span class="text-[11px] font-bold">우리 온도</span>
+            </button>
+          </nav>
+          ${renderModals()}
+        `;
+
+        const sc = document.getElementById('chat-scroll');
+        if (sc) sc.scrollTop = sc.scrollHeight;
+      }
+
+      // 이벤트 위임
+      document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const action = btn.getAttribute('data-action');
+
+        if (action === 'regen-code') {
+          state.coupleCode = randomCoupleCode();
+          render();
+        } else if (action === 'pick-role') {
+          state.role = btn.getAttribute('data-role') || 'A';
+          render();
+        } else if (action === 'start-app') {
+          const myEl = document.getElementById('ob-my-name');
+          const ptEl = document.getElementById('ob-partner-name');
+          const cdEl = document.getElementById('ob-code');
+          if (myEl && myEl.value.trim()) state.myName = myEl.value.trim();
+          if (ptEl && ptEl.value.trim()) state.partnerName = ptEl.value.trim();
+          if (cdEl && cdEl.value.trim()) state.coupleCode = cdEl.value.trim().toUpperCase();
+          state.onboarded = true;
+          saveState();
+          await ensureCoupleRow();
+          startSyncLoop();
+          render();
+          showToast('우리사이에 입장했어요! 💛');
+        } else if (action === 'switch-tab') {
+          state.activeTab = btn.getAttribute('data-tab') || 'saibot';
+          saveState();
+          render();
+        } else if (action === 'toggle-role') {
+          state.role = state.role === 'A' ? 'B' : 'A';
+          state.activeTab = state.role === 'B' ? 'missions' : 'saibot';
+          saveState();
+          render();
+          showToast(state.role === 'A' ? state.myName + ' (A) 화면으로 전환했어요' : state.partnerName + ' (B) 화면으로 전환했어요');
+        } else if (action === 'quick-tag') {
+          state.draftInput = btn.getAttribute('data-sample') || '';
+          render();
+        } else if (action === 'send-emotion') {
+          const inputEl = document.getElementById('emotion-input');
+          const text = ((inputEl && inputEl.value) || state.draftInput || '').trim();
+          if (!text) return;
+          state.draftInput = '';
+          const role = state.role;
+          state.chats[role] = state.chats[role] || [];
+          state.chats[role].push({ id: 'u-' + Date.now(), sender: 'user', text: text, time: nowStr() });
+          saveState();
+          render();
+
+          const res = await translateEmotion(text);
+          state.chats[role].push({
+            id: 'b-' + Date.now(),
+            sender: 'bot',
+            type: 'draft',
+            empathy: res.empathy,
+            drafts: res.drafts,
+            draftIdx: 0,
+            sent: false,
+            time: nowStr()
+          });
+          saveState();
+          render();
+        } else if (action === 'shuffle-draft') {
+          const id = btn.getAttribute('data-id');
+          const list = state.chats[state.role] || [];
+          const msg = list.find((m) => m.id === id);
+          if (msg && !msg.sent) {
+            msg.draftIdx = ((msg.draftIdx || 0) + 1) % msg.drafts.length;
+            saveState();
+            render();
+          }
+        } else if (action === 'send-nudge') {
+          const id = btn.getAttribute('data-id');
+          const list = state.chats[state.role] || [];
+          const msg = list.find((m) => m.id === id);
+          if (!msg || msg.sent) return;
+          const draft = msg.drafts[msg.draftIdx || 0];
+          const targetRole = state.role === 'A' ? 'B' : 'A';
+          const missionId = 'm-' + Date.now();
+          msg.sent = true;
+          const newMission = {
+            id: missionId,
+            targetRole: targetRole,
+            title: draft.title,
+            badge: draft.badge,
+            message: draft.message,
+            time: '방금 도착',
+            accepted: false
+          };
+          state.missions.unshift(newMission);
+          saveState();
+          render();
+          showToast('상대방 피드에 자연스러운 데일리 미션이 도착했어요 ✨');
+
+          if (state.supabaseUrl && state.supabaseKey) {
+            await ensureCoupleRow();
+            await sbFetch('daily_missions', {
+              method: 'POST',
+              body: JSON.stringify({
+                id: missionId,
+                couple_code: state.coupleCode,
+                target_role: targetRole,
+                title: draft.title,
+                badge: draft.badge,
+                message: draft.message,
+                accepted: false
+              })
+            });
+          }
+        } else if (action === 'accept-mission') {
+          const id = btn.getAttribute('data-id');
+          const mission = state.missions.find((m) => m.id === id);
+          if (!mission || mission.accepted) return;
+          mission.accepted = true;
+          state.warmthTemp = Math.min(45.0, Number((state.warmthTemp + 1.2).toFixed(1)));
+          state.completedCount += 1;
+
+          const senderRole = state.role === 'A' ? 'B' : 'A';
+          state.chats[senderRole] = state.chats[senderRole] || [];
+          state.chats[senderRole].push({
+            id: 'n-' + Date.now(),
+            sender: 'bot',
+            type: 'notice',
+            text: '상대방이 오늘의 추천 미션("' + mission.title + '")을 수락했어요! 💛 다정함 온도가 ' + state.warmthTemp.toFixed(1) + '°C로 올랐어요.',
+            time: nowStr()
+          });
+          saveState();
+          render();
+          showToast('다정함 스탬프 완료! 온도가 +1.2°C 올랐어요 💛');
+
+          if (state.supabaseUrl && state.supabaseKey) {
+            await sbFetch('daily_missions?id=eq.' + encodeURIComponent(id), {
+              method: 'PATCH',
+              body: JSON.stringify({ accepted: true, accepted_at: new Date().toISOString() })
+            });
+            await sbFetch('couples?code=eq.' + encodeURIComponent(state.coupleCode), {
+              method: 'PATCH',
+              body: JSON.stringify({ warmth_temp: state.warmthTemp, completed_count: state.completedCount })
+            });
+          }
+        } else if (action === 'open-settings') {
+          state.showSettings = true;
+          render();
+        } else if (action === 'open-install') {
+          state.showInstallGuide = true;
+          render();
+        } else if (action === 'close-modals') {
+          state.showSettings = false;
+          state.showInstallGuide = false;
+          render();
+        } else if (action === 'save-settings') {
+          const u = document.getElementById('set-sb-url');
+          const k = document.getElementById('set-sb-key');
+          const g = document.getElementById('set-gem-key');
+          state.supabaseUrl = u ? u.value.trim() : '';
+          state.supabaseKey = k ? k.value.trim() : '';
+          state.geminiKey = g ? g.value.trim() : '';
+          state.syncStatus = (state.supabaseUrl && state.supabaseKey) ? 'Supabase 연동됨' : '로컬 체험 모드';
+          state.showSettings = false;
+          saveState();
+          await ensureCoupleRow();
+          startSyncLoop();
+          render();
+          showToast('설정이 저장되었어요!');
+        } else if (action === 'copy-code') {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(state.coupleCode);
+            } else {
+              const ta = document.createElement('textarea');
+              ta.value = state.coupleCode;
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+            }
+            showToast('커플 코드 ' + state.coupleCode + ' 복사 완료!');
+          } catch (_e) {
+            showToast('코드: ' + state.coupleCode);
+          }
+        } else if (action === 'reset-all') {
+          state = defaultState();
+          saveState();
+          render();
+          showToast('앱 데이터를 초기화했어요.');
+        }
+      });
+
+      document.addEventListener('input', (e) => {
+        if (e.target && e.target.id === 'emotion-input') {
+          state.draftInput = e.target.value;
+        }
+      });
+
+      render();
+      startSyncLoop();
+    })();
+  </script>
+</body>
+</html>

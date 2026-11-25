@@ -1,0 +1,24 @@
+{
+  "name": "우리사이 - 커플 감정 번역 & 다정함 코칭",
+  "short_name": "우리사이",
+  "description": "서운한 마음을 부드러운 데일리 미션으로 번역해 주는 커플 관계 코칭 앱",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF9F5",
+  "theme_color": "#FFF9F5",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
