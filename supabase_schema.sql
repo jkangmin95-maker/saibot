@@ -4,6 +4,8 @@ create table if not exists public.couples (
   code text primary key,
   warmth_temp numeric(4,1) not null default 37.5,
   completed_count integer not null default 2,
+  name_a text,
+  name_b text,
   created_at timestamptz not null default now()
 );
 

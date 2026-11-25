@@ -38,25 +38,33 @@
   </style>
 </head>
 <body class="min-h-screen flex justify-center bg-[#F4ECE6]">
-  <!-- 모바일 앱 컨테이너 (폰에서는 전체 화면, 데스크톱에서는 깔끔한 모바일 뷰포트) -->
-  <div id="app" class="w-full max-w-[440px] h-[100dvh] max-h-[100dvh] bg-[#FFF9F5] shadow-[0_0_40px_rgba(45,52,54,0.08)] flex flex-col relative overflow-hidden">
-    <!-- JS가 마운트 -->
+  <!-- 폰에서는 전체 화면, 데스크톱에서는 가운데 정렬된 모바일 뷰포트 -->
+  <div class="relative w-full max-w-[440px] h-[100dvh] max-h-[100dvh] shadow-[0_0_40px_rgba(45,52,54,0.08)]">
+    <div id="app" class="w-full h-full bg-[#FFF9F5] flex flex-col overflow-hidden">
+      <!-- JS가 마운트 -->
+    </div>
+    <div id="toast" class="absolute left-1/2 -translate-x-1/2 z-[60] hidden w-[90%] bg-[#2D3436] text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl text-center" style="bottom: max(11.75rem, calc(env(safe-area-inset-bottom) + 10.5rem))"></div>
   </div>
-
-  <!-- 토스트 컨테이너 -->
-  <div id="toast" class="fixed left-1/2 -translate-x-1/2 z-[60] hidden max-w-[380px] w-[90%] bg-[#2D3436] text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-xl text-center" style="bottom: max(11.75rem, calc(env(safe-area-inset-bottom) + 10.5rem))"></div>
 
   <script>
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_KEY = "urisai_mobile_state_v1";
+      const LAST_CODE_KEY = "urisai_last_couple_code";
+      const APP_VERSION = "v7";
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
       const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bGlnc3JwYXhpdGxwdXdiZGp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU1NzgxNzEsImV4cCI6MjExMTE1NDE3MX0.9VRYSaXhXSjCjvcVO60C6-1TVM47yG9rprFegw3ZW5A";
 
-      // PWA Service Worker 등록 (HTTPS 호스팅 환경에서만 동작)
+      // PWA Service Worker: 새 버전이면 바로 적용 후 새로고침
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (refreshing) return;
+          refreshing = true;
+          location.reload();
+        });
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('./sw.js').catch(() => {});
         });
@@ -185,27 +193,59 @@
         };
       }
 
+      function hydrateState(parsed) {
+        const s = Object.assign(defaultState(), parsed || {});
+        if (!s.supabaseUrl) s.supabaseUrl = DEFAULT_SUPABASE_URL;
+        if (!s.supabaseKey) s.supabaseKey = DEFAULT_SUPABASE_ANON_KEY;
+        delete s.geminiKey;
+        if (s.supabaseUrl && s.supabaseKey && s.syncStatus === '로컬 체험 모드') {
+          s.syncStatus = 'connected';
+        }
+        if (Array.isArray(s.missions)) {
+          s.missions = s.missions.filter((m) => m && String(m.id).indexOf('base-') !== 0 && !(m.message || '').includes("디지털 디톡스 15분"));
+        }
+        return s;
+      }
+
+      function rememberLastCode(code) {
+        try {
+          const c = String(code || '').trim().toUpperCase();
+          if (c) localStorage.setItem(LAST_CODE_KEY, c);
+        } catch (_e) {}
+      }
+
+      function readLastCode() {
+        try {
+          return (localStorage.getItem(LAST_CODE_KEY) || '').trim().toUpperCase();
+        } catch (_e) {
+          return '';
+        }
+      }
+
       function loadState() {
+        // Per-tab identity lives in sessionStorage so two desktop tabs
+        // in the same Chrome profile can be 나 / 연인 at once.
+        try {
+          const raw = sessionStorage.getItem(STORAGE_KEY);
+          if (raw) return hydrateState(JSON.parse(raw));
+        } catch (_e) {}
+
+        // One-time migration from the old shared localStorage document.
         try {
           const raw = localStorage.getItem(STORAGE_KEY);
-          const base = defaultState();
-          if (!raw) return base;
-          const parsed = JSON.parse(raw);
-          const s = Object.assign(base, parsed);
-          // Keep built-in project defaults if a previous visit saved empty keys
-          if (!s.supabaseUrl) s.supabaseUrl = DEFAULT_SUPABASE_URL;
-          if (!s.supabaseKey) s.supabaseKey = DEFAULT_SUPABASE_ANON_KEY;
-          delete s.geminiKey;
-          if (s.supabaseUrl && s.supabaseKey && s.syncStatus === '로컬 체험 모드') {
-            s.syncStatus = 'connected';
+          if (raw) {
+            const s = hydrateState(JSON.parse(raw));
+            try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch (_e) {}
+            if (s.coupleCode) rememberLastCode(s.coupleCode);
+            try { localStorage.removeItem(STORAGE_KEY); } catch (_e) {}
+            return s;
           }
-          if (Array.isArray(s.missions)) {
-            s.missions = s.missions.filter((m) => m && String(m.id).indexOf('base-') !== 0 && !(m.message || '').includes("디지털 디톡스 15분"));
-          }
-          return s;
-        } catch (_e) {
-          return defaultState();
-        }
+        } catch (_e) {}
+
+        const base = defaultState();
+        const last = readLastCode();
+        if (last) base.coupleCode = last;
+        return base;
       }
 
       let state = loadState();
@@ -214,9 +254,17 @@
 
       function saveState() {
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         } catch (_e) {}
+        if (state.coupleCode) rememberLastCode(state.coupleCode);
       }
+
+      // Ignore other tabs writing the old shared localStorage key.
+      // This tab's role / code must not be overwritten, and logout in
+      // another tab must not log this tab out.
+      window.addEventListener('storage', function (e) {
+        if (e.key !== STORAGE_KEY && e.key !== LAST_CODE_KEY) return;
+      });
 
       function hideToast() {
         const el = document.getElementById('toast');
@@ -244,19 +292,33 @@
 
       // Supabase REST 헬퍼 (설정된 경우에만 호출)
       async function sbFetch(path, options) {
-        if (!state.supabaseUrl || !state.supabaseKey) return null;
+        if (!state.supabaseUrl || !state.supabaseKey) {
+          const err = new Error('not-configured');
+          err.status = 0;
+          throw err;
+        }
         const base = state.supabaseUrl.replace(/\/$/, '');
+        const extra = options || {};
+        const headers = Object.assign({
+          apikey: state.supabaseKey,
+          Authorization: 'Bearer ' + state.supabaseKey,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation'
+        }, extra.headers || {});
+        const res = await fetch(base + '/rest/v1/' + path, Object.assign({}, extra, { headers: headers }));
+        if (!res.ok) {
+          const err = new Error('save-failed');
+          err.status = res.status;
+          throw err;
+        }
+        const raw = await res.text();
+        if (!raw) return [];
+        return JSON.parse(raw);
+      }
+
+      async function sbFetchQuiet(path, options) {
         try {
-          const res = await fetch(base + '/rest/v1/' + path, Object.assign({
-            headers: {
-              apikey: state.supabaseKey,
-              Authorization: 'Bearer ' + state.supabaseKey,
-              'Content-Type': 'application/json',
-              Prefer: 'return=representation'
-            }
-          }, options || {}));
-          if (!res.ok) return null;
-          return await res.json();
+          return await sbFetch(path, options);
         } catch (_e) {
           return null;
         }
@@ -296,35 +358,45 @@
 
       async function syncFromSupabase() {
         if (!state.onboarded || !state.supabaseUrl || !state.supabaseKey) return;
-        const couples = await sbFetch('couples?code=eq.' + encodeURIComponent(state.coupleCode));
-        let warmthChanged = false;
+        const couples = await sbFetchQuiet('couples?code=eq.' + encodeURIComponent(state.coupleCode));
+        let changed = false;
         if (couples && couples.length > 0) {
-          const nextTemp = Number(couples[0].warmth_temp);
-          const nextCount = Number(couples[0].completed_count);
+          const row = couples[0];
+          const nextTemp = Number(row.warmth_temp);
+          const nextCount = Number(row.completed_count);
           if (!Number.isNaN(nextTemp) && nextTemp !== state.warmthTemp) {
             state.warmthTemp = nextTemp;
-            warmthChanged = true;
+            changed = true;
           }
           if (!Number.isNaN(nextCount) && nextCount !== state.completedCount) {
             state.completedCount = nextCount;
-            warmthChanged = true;
+            changed = true;
+          }
+          const myFromServer = state.role === 'A' ? row.name_a : row.name_b;
+          const partnerFromServer = state.role === 'A' ? row.name_b : row.name_a;
+          if (myFromServer && myFromServer !== state.myName) {
+            state.myName = myFromServer;
+            changed = true;
+          }
+          if (partnerFromServer && partnerFromServer !== state.partnerName) {
+            state.partnerName = partnerFromServer;
+            changed = true;
           }
           if (state.syncStatus !== 'connected') state.syncStatus = 'connected';
         }
-        const rows = await sbFetch('daily_missions?couple_code=eq.' + encodeURIComponent(state.coupleCode) + '&order=created_at.desc');
+        const rows = await sbFetchQuiet('daily_missions?couple_code=eq.' + encodeURIComponent(state.coupleCode) + '&order=created_at.desc');
         if (rows && Array.isArray(rows)) {
           const merged = mergeRemoteMissions(rows);
           const before = JSON.stringify((state.missions || []).map((m) => [m.id, m.accepted]));
           const after = JSON.stringify(merged.map((m) => [m.id, m.accepted]));
-          const missionsChanged = before !== after;
-          if (missionsChanged) state.missions = merged;
-          if (missionsChanged || warmthChanged) {
-            saveState();
-            if (!isUserTyping()) render();
+          if (before !== after) {
+            state.missions = merged;
+            changed = true;
           }
-        } else if (warmthChanged && !isUserTyping()) {
+        }
+        if (changed) {
           saveState();
-          render();
+          if (!isUserTyping()) render();
         }
       }
 
@@ -337,7 +409,6 @@
       }
 
       async function ensureCoupleRow() {
-        if (!state.supabaseUrl || !state.supabaseKey) return;
         await sbFetch('couples?on_conflict=code', {
           method: 'POST',
           headers: {
@@ -351,6 +422,16 @@
             warmth_temp: state.warmthTemp,
             completed_count: state.completedCount
           })
+        });
+      }
+
+      async function saveNamesToServer() {
+        const payload = state.role === 'A'
+          ? { name_a: state.myName, name_b: state.partnerName }
+          : { name_b: state.myName, name_a: state.partnerName };
+        await sbFetch('couples?code=eq.' + encodeURIComponent(state.coupleCode), {
+          method: 'PATCH',
+          body: JSON.stringify(payload)
         });
       }
 
@@ -422,7 +503,7 @@
                   <input id="ob-code" type="text" value="${esc(state.coupleCode)}" class="flex-1 px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-mono font-bold tracking-wider uppercase focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
                   <button type="button" data-action="regen-code" class="px-3 py-2 rounded-xl bg-[#FFF0EE] text-[#E0665B] text-xs font-bold hover:bg-[#FF8A80] hover:text-white transition-colors">새 코드</button>
                 </div>
-                <p class="text-[10px] text-[#9AA5A9] mt-1">연인과 같은 코드를 입력하면 두 핸드폰이 연결돼요.</p>
+                <p class="text-[10px] text-[#9AA5A9] mt-1">연인과 같은 코드를 입력해야 미션이 연결돼요. 같은 컴퓨터의 다른 탭에서도 이 코드를 그대로 쓰면 돼요.</p>
               </div>
 
               <div>
@@ -675,7 +756,7 @@
                     <span class="text-[#9AA5A9]">›</span>
                   </button>
 
-                  <p class="text-[11px] text-[#B2BEC3] text-center pt-1">우리사이 · 커플 감정 번역 &amp; 다정함 코칭</p>
+                  <p class="text-[11px] text-[#B2BEC3] text-center pt-1">우리사이 · 커플 감정 번역 &amp; 다정함 코칭<br /><span class="font-mono tracking-wide">${APP_VERSION}</span></p>
                 </div>
 
                 <button type="button" data-action="logout-ask" class="mt-5 w-full py-3 rounded-2xl border border-[#FF8A80]/30 text-[#E0665B] text-xs font-extrabold bg-white hover:bg-[#FFF0EE]">
@@ -806,12 +887,24 @@
           render();
         } else if (action === 'start-app') {
           readOnboardingFields();
-          state.onboarded = true;
-          saveState();
-          await ensureCoupleRow();
-          startSyncLoop();
-          render();
-          showToast('우리사이에 입장했어요! 💛');
+          if (!state.coupleCode) {
+            showToast('초대 코드를 입력해 주세요');
+            return;
+          }
+          try {
+            await ensureCoupleRow();
+            await saveNamesToServer();
+            state.onboarded = true;
+            if (state.role === 'B') state.activeTab = 'missions';
+            saveState();
+            rememberLastCode(state.coupleCode);
+            await syncFromSupabase();
+            startSyncLoop();
+            render();
+            showToast('우리사이에 입장했어요! 💛');
+          } catch (_e) {
+            showToast('연결에 실패했어요, 다시 시도해 주세요');
+          }
         } else if (action === 'switch-tab') {
           state.activeTab = btn.getAttribute('data-tab') || 'saibot';
           saveState();
@@ -880,12 +973,7 @@
             time: '방금 도착',
             accepted: false
           };
-          state.missions.unshift(newMission);
-          saveState();
-          render();
-          showToast('상대방 피드에 자연스러운 데일리 미션이 도착했어요 ✨');
-
-          if (state.supabaseUrl && state.supabaseKey) {
+          try {
             await ensureCoupleRow();
             await sbFetch('daily_missions', {
               method: 'POST',
@@ -899,7 +987,14 @@
                 accepted: false
               })
             });
+          } catch (_e) {
+            showToast('미션을 보내지 못했어요, 다시 시도해 주세요');
+            return;
           }
+          state.missions.unshift(newMission);
+          saveState();
+          render();
+          showToast('상대방 피드에 자연스러운 데일리 미션이 도착했어요 ✨');
         } else if (action === 'accept-mission') {
           const id = btn.getAttribute('data-id');
           const mission = state.missions.find((m) => m.id === id);
@@ -921,7 +1016,7 @@
           render();
           showToast('다정함 스탬프 완료! 온도가 +1.2°C 올랐어요 💛');
 
-          if (state.supabaseUrl && state.supabaseKey) {
+          try {
             await sbFetch('daily_missions?id=eq.' + encodeURIComponent(id), {
               method: 'PATCH',
               body: JSON.stringify({ accepted: true, accepted_at: new Date().toISOString() })
@@ -930,6 +1025,16 @@
               method: 'PATCH',
               body: JSON.stringify({ warmth_temp: state.warmthTemp, completed_count: state.completedCount })
             });
+          } catch (_e) {
+            mission.accepted = false;
+            state.warmthTemp = Math.max(37.5, Number((state.warmthTemp - 1.2).toFixed(1)));
+            state.completedCount = Math.max(0, state.completedCount - 1);
+            const noticeList = state.chats[senderRole] || [];
+            if (noticeList.length && noticeList[noticeList.length - 1].type === 'notice') noticeList.pop();
+            saveState();
+            render();
+            showToast('저장에 실패했어요, 다시 시도해 주세요');
+            return;
           }
         } else if (action === 'open-settings') {
           hideToast();
@@ -949,10 +1054,15 @@
           const ptEl = document.getElementById('set-partner-name');
           if (myEl && myEl.value.trim()) state.myName = myEl.value.trim();
           if (ptEl && ptEl.value.trim()) state.partnerName = ptEl.value.trim();
-          state.showSettings = false;
-          saveState();
-          render();
-          showToast('닉네임을 저장했어요.');
+          try {
+            await saveNamesToServer();
+            state.showSettings = false;
+            saveState();
+            render();
+            showToast('닉네임을 저장했어요.');
+          } catch (_e) {
+            showToast('저장에 실패했어요, 다시 시도해 주세요');
+          }
         } else if (action === 'share-code') {
           const text = '우리사이 초대 코드: ' + state.coupleCode + '\n같은 코드로 입장하면 서로 연결돼요.';
           try {
@@ -977,11 +1087,14 @@
         } else if (action === 'logout-confirm') {
           if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
           sendingEmotion = false;
-          try { localStorage.removeItem(STORAGE_KEY); } catch (_e) {}
+          const lastCode = state.coupleCode || readLastCode();
+          try { sessionStorage.removeItem(STORAGE_KEY); } catch (_e) {}
+          // Do not clear localStorage identity of other tabs; last code is kept for re-entry.
           state = defaultState();
-          saveState();
+          if (lastCode) state.coupleCode = lastCode;
+          rememberLastCode(lastCode);
           render();
-          showToast('이 휴대폰에서 로그아웃했어요.');
+          showToast('이 탭에서 로그아웃했어요. 같은 코드로 다시 입장하면 기록이 복구돼요.');
         } else if (action === 'copy-code') {
           try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
