@@ -9,7 +9,7 @@
 --   * thinkingLevel = minimal (about 1-2s); try gemini-3.5-flash-lite, then gemini-3.1-flash-lite,
 --     flash-lite again, then gemini-3.5-flash (its free tier is only ~20 requests/day, so it is the last resort).
 --     On 2026-11-25 flash-lite was often timing out / 503 "high demand".
---   * statement_timeout 22s for both RPCs (each Gemini attempt is capped at 6s).
+--   * statement_timeout 24s for both RPCs (each Gemini attempt is capped at 8s, no new attempt after 12s).
 --   * New public.sai_chat(couple_code, messages jsonb): answers the user's actual message with
 --     recent turns as context, and suggests missions only when it fits.
 -- Safeguards: caller must be authenticated AND a member of couple_code; last message <= 500 chars,
@@ -58,10 +58,10 @@ begin
 
   -- 503 "high demand" usually comes back fast, so flash-lite gets a second try.
   foreach v_model in array array['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'] loop
-    -- stay well inside the 22s statement_timeout (each attempt <= 6s)
-    exit when clock_timestamp() - v_started > interval '14 seconds';
+    -- stay inside the 24s statement_timeout (each attempt <= 8s)
+    exit when clock_timestamp() - v_started > interval '12 seconds';
     begin
-      perform extensions.http_set_curlopt('CURLOPT_TIMEOUT', '6');
+      perform extensions.http_set_curlopt('CURLOPT_TIMEOUT', '8');
       perform extensions.http_set_curlopt('CURLOPT_CONNECTTIMEOUT', '3');
       select * into v_resp
       from extensions.http((
@@ -139,7 +139,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public, vault, extensions
-set statement_timeout = '22s'
+set statement_timeout = '24s'
 as $fn$
 #variable_conflict use_column
 declare
@@ -225,9 +225,10 @@ begin
     '- 서운함·아쉬움·바람이 드러나면 공감한 뒤, 연인에게 ''오늘의 미션''으로 슬쩍 보낼 다정한 행동 제안을 2개 만들어.' || E'\n' ||
     '- 정보가 부족하면 미션 없이 한 가지만 부드럽게 되물어.' || E'\n' ||
     '- 이전 대화 흐름을 기억하고 같은 말을 반복하지 마.' || E'\n' ||
-    '미션 규칙: 미션은 연인이 자기 앱에서 받아 보고, 연인이 나에게 해 줄 행동이야. 나의 서운함이 풀리는 방향의 행동이어야 해(예: 늦어서 서운했다면 연인이 먼저 연락하거나 시간을 챙기는 행동).' || E'\n' ||
-    '- 연인에게 직접 말하듯 쓰고, 이름 대신 ''상대방''이라고 불러. 연인을 3인칭으로 부르지 마.' || E'\n' ||
-    '- 연인이 불만을 들었다는 사실이나 구체적인 서운함을 절대 드러내지 마. 그냥 앱이 추천하는 오늘의 미션처럼 보여야 해.' || E'\n' ||
+    '미션 규칙: 미션 message는 앱이 연인에게 보내는 오늘의 추천 문구야. 나의 서운함이 풀리도록 연인이 나에게 해 줄 행동을 제안해.' || E'\n' ||
+    '- 연인에게 직접 말하는 형식: "상대방에게 ~해 주세요", "오늘은 상대방과 ~해 보세요". 나를 가리킬 땐 이름이 아니라 ''상대방''이라고 써.' || E'\n' ||
+    '- 연인이 불만을 들었다는 사실이나 과거의 잘못(늦음, 폰, 말투 등)을 절대 언급하지 마. ''늦었으니'', ''서운'', ''화나'' 같은 말 금지. 그냥 앱이 추천하는 기분 좋은 미션처럼 보여야 해.' || E'\n' ||
+    '- 예: 늦어서 서운했다면 → "오늘은 출발할 때 상대방에게 ''지금 출발!'' 한 줄 먼저 보내 주세요."' || E'\n' ||
     '- 오늘 바로 할 수 있는 구체적인 행동 1개를 1~2문장의 해요체로. 두 미션은 서로 다른 행동이어야 하고 최근 보낸 미션과 겹치지 마.' || E'\n' ||
     '- title은 15자 이내.' || E'\n' ||
     '출력: 반드시 JSON 하나만. {"reply":"나에게 하는 답","missions":[{"title":"...","message":"..."}]} 미션이 필요 없으면 "missions":[].';
@@ -271,14 +272,14 @@ grant execute on function public.sai_chat(text, jsonb) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- public.generate_mission (same signature/return as v8, used by older app versions)
--- now: thinkingLevel minimal, 3-model retry, 22s statement_timeout, couple context.
+-- now: thinkingLevel minimal, model retries, 24s statement_timeout, couple context.
 -- ---------------------------------------------------------------------------
 create or replace function public.generate_mission(feeling text, couple_code text)
 returns jsonb
 language plpgsql
 security definer
 set search_path = public, vault, extensions
-set statement_timeout = '22s'
+set statement_timeout = '24s'
 as $fn$
 #variable_conflict use_column
 declare
@@ -316,7 +317,7 @@ begin
       '반드시 다음 JSON만 출력하세요: {"empathy":"...","title":"...","message":"..."}' || E'\n' ||
       '1) empathy: 털어놓은 사람이 쓴 말과 상황을 구체적으로 짚어 공감하는 1~2문장(본인만 봄). 뻔한 템플릿 금지.' || E'\n' ||
       '2) title: 상대방에게 보낼 데일리 미션 제목(15자 이내).' || E'\n' ||
-      '3) message: 연인이 받아 보고 털어놓은 사람에게 해 줄 미션 1~2문장, 해요체. 연인에게 직접 말하듯 쓰고 이름 대신 ''상대방''이라고 부르세요. 불만이나 서운함은 절대 드러내지 말고, 서운함이 풀리는 방향의 오늘 할 수 있는 구체적인 다정한 행동. 최근 보낸 미션과 겹치지 않게.'
+      '3) message: 앱이 연인에게 보내는 오늘의 추천 미션 1~2문장, 해요체. "상대방에게 ~해 주세요" 형식으로 연인에게 직접 말하고, 털어놓은 사람은 이름 대신 ''상대방''이라고 부르세요. 불만·서운함·과거의 잘못은 절대 언급하지 말고, 마음이 풀리는 방향의 오늘 할 수 있는 구체적인 다정한 행동. 최근 보낸 미션과 겹치지 않게.'
     )))),
     'generationConfig', jsonb_build_object(
       'temperature', 1.0,

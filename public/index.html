@@ -553,7 +553,7 @@
         const clean = String(text || '').slice(0, 500);
         if (!state.coupleCode) return localFallback(clean, role);
 
-        const r = await rpcTimed('sai_chat', { couple_code: state.coupleCode, messages: chatHistory(role) }, 25000);
+        const r = await rpcTimed('sai_chat', { couple_code: state.coupleCode, messages: chatHistory(role) }, 27000);
         const d = r.data;
         if (r.status === 200 && d && typeof d.reply === 'string' && d.reply.trim()) {
           const drafts = (Array.isArray(d.missions) ? d.missions : [])
