@@ -427,7 +427,10 @@
           if (next.status === 'accepted') showToast('둘 다 좋대요! 이제 올릴 수 있어요 ✨');
           if (next.status === 'declined') showToast('이번 건 둘만 보기로 했어요. 카드는 우리 온도 탭에 그대로 있어요.');
         } else if (next && next.status === 'pending' && !next.requested_by_me && (!prev || prev.id !== next.id)) {
-          showToast((next.requester_name || state.partnerName || '연인') + '님이 우리 조합 카드를 올리고 싶대요 💌');
+          // 오늘의 미션 탭에서는 같은 문구의 동의 카드가 보이므로 토스트는 건너뛴다
+          if (state.activeTab !== 'missions') {
+            showToast((next.requester_name || state.partnerName || '연인') + '님이 우리 조합 카드를 올리고 싶대요 💌');
+          }
         }
         return true;
       }

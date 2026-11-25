@@ -205,7 +205,8 @@ begin
   select * into s from private.share_consents where id = p_id for update;
   if not found then raise exception 'consent_not_found' using errcode = 'P0002'; end if;
   select * into c from public.couples where code = s.couple_code;
-  if not (c.user_a = auth.uid() or c.user_b = auth.uid()) then
+  -- coalesce: a NULL user_a/user_b must not turn this membership check into NULL (which IF treats as false = no raise)
+  if not coalesce(c.user_a = auth.uid() or c.user_b = auth.uid(), false) then
     raise exception 'consent_not_found' using errcode = 'P0002';
   end if;
   if s.requested_by = auth.uid() then raise exception 'cannot_answer_own_request' using errcode = 'P0001'; end if;

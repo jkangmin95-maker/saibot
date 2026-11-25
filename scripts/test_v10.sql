@@ -95,6 +95,18 @@ select set_config('request.jwt.claims', '{"sub":"a1000000-0000-0000-0000-0000000
 select pg_temp.ok('new request after decline creates a new pending row',
   (select r->>'status' = 'pending' and r->>'id' <> (select v from t_v where k = 'consent') from (select public.request_share_consent('combo') r) x));
 reset role;
+-- NULL seat: without coalesce, `false OR NULL` is NULL and IF does not raise
+insert into private.share_consents(couple_code, requested_by, card_type)
+  values ((select v from t_v where k = 'c3'), 'c3000000-0000-0000-0000-000000000003', 'combo');
+insert into t_v select 'consent_null', id::text from private.share_consents
+  where couple_code = (select v from t_v where k = 'c3') order by created_at desc limit 1;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a1000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+select pg_temp.raises('non-member cannot respond when the other couple slot is NULL',
+  format('select public.respond_share_consent(%L, true)', (select v from t_v where k = 'consent_null')), 'consent_not_found');
+reset role;
+select pg_temp.ok('NULL-slot consent stays pending after outsider attempt',
+  (select status from private.share_consents where id = (select v from t_v where k = 'consent_null')::uuid) = 'pending');
 
 -- 3) quiz (anon) -------------------------------------------------------------------
 set local role anon;
