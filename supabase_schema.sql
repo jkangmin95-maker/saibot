@@ -1,4 +1,4 @@
--- Idempotent schema + grants for the 우리사이 PWA (anon REST access)
+-- Idempotent schema for the 우리사이 PWA (v8: Kakao login via Supabase Auth, members-only RLS)
 
 create table if not exists public.couples (
   code text primary key,
@@ -6,6 +6,8 @@ create table if not exists public.couples (
   completed_count integer not null default 2,
   name_a text,
   name_b text,
+  user_a uuid references auth.users(id) on delete set null,
+  user_b uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -34,18 +36,137 @@ alter table public.couples enable row level security;
 alter table public.daily_missions enable row level security;
 alter table public.secret_emotions enable row level security;
 
+alter table public.couples add column if not exists user_a uuid references auth.users(id) on delete set null;
+alter table public.couples add column if not exists user_b uuid references auth.users(id) on delete set null;
+alter table public.couples alter column completed_count set default 0;
+create unique index if not exists couples_user_a_key on public.couples(user_a) where user_a is not null;
+create unique index if not exists couples_user_b_key on public.couples(user_b) where user_b is not null;
+do $$ begin
+  alter table public.couples add constraint couples_distinct_users check (user_a is distinct from user_b or user_a is null);
+exception when duplicate_object then null; end $$;
+
+-- Old open policies
 drop policy if exists "couples_anon_all" on public.couples;
 drop policy if exists "missions_anon_all" on public.daily_missions;
 drop policy if exists "emotions_anon_insert" on public.secret_emotions;
+drop policy if exists "couples_member_select" on public.couples;
+drop policy if exists "couples_member_update" on public.couples;
+drop policy if exists "missions_member_all" on public.daily_missions;
+drop policy if exists "emotions_member_select" on public.secret_emotions;
+drop policy if exists "emotions_member_insert" on public.secret_emotions;
 
-create policy "couples_anon_all" on public.couples for all using (true) with check (true);
-create policy "missions_anon_all" on public.daily_missions for all using (true) with check (true);
-create policy "emotions_anon_insert" on public.secret_emotions for insert with check (true);
+revoke all on public.couples, public.daily_missions, public.secret_emotions from anon, authenticated, public;
 
-grant usage on schema public to anon, authenticated, service_role;
-grant select, insert, update, delete on public.couples to anon, authenticated, service_role;
-grant select, insert, update, delete on public.daily_missions to anon, authenticated, service_role;
-grant select, insert, update, delete on public.secret_emotions to anon, authenticated, service_role;
+-- Is the caller one of the two members of this couple code?
+create or replace function public.is_couple_member(p_code text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select auth.uid() is not null and exists (
+    select 1 from public.couples c
+    where c.code = p_code and (c.user_a = auth.uid() or c.user_b = auth.uid())
+  );
+$$;
+revoke all on function public.is_couple_member(text) from public, anon;
+grant execute on function public.is_couple_member(text) to authenticated;
+
+create policy "couples_member_select" on public.couples for select to authenticated
+  using (user_a = auth.uid() or user_b = auth.uid());
+create policy "couples_member_update" on public.couples for update to authenticated
+  using (user_a = auth.uid() or user_b = auth.uid())
+  with check (user_a = auth.uid() or user_b = auth.uid());
+create policy "missions_member_all" on public.daily_missions for all to authenticated
+  using (public.is_couple_member(couple_code))
+  with check (public.is_couple_member(couple_code));
+create policy "emotions_member_select" on public.secret_emotions for select to authenticated
+  using (public.is_couple_member(couple_code));
+create policy "emotions_member_insert" on public.secret_emotions for insert to authenticated
+  with check (public.is_couple_member(couple_code));
+
+grant usage on schema public to authenticated;
+grant select on public.couples to authenticated;
+-- members may change only these columns; user_a/user_b/code change only via RPC
+grant update (name_a, name_b, warmth_temp, completed_count) on public.couples to authenticated;
+grant select, insert, update, delete on public.daily_missions to authenticated;
+grant select, insert on public.secret_emotions to authenticated;
+grant all on public.couples, public.daily_missions, public.secret_emotions to service_role;
+
+-- my_couple(): the caller's couple or null
+create or replace function public.my_couple()
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare c public.couples;
+begin
+  if auth.uid() is null then return null; end if;
+  select * into c from public.couples where user_a = auth.uid() or user_b = auth.uid() limit 1;
+  if not found then return null; end if;
+  return jsonb_build_object(
+    'code', c.code,
+    'role', case when c.user_a = auth.uid() then 'A' else 'B' end,
+    'name_a', c.name_a, 'name_b', c.name_b,
+    'partner_joined', (c.user_a is not null and c.user_b is not null),
+    'warmth_temp', c.warmth_temp, 'completed_count', c.completed_count);
+end $$;
+
+-- create_couple(nickname): caller becomes member A of a fresh code
+create or replace function public.create_couple(nickname text default null)
+returns jsonb language plpgsql volatile security definer set search_path = public as $$
+declare
+  v_uid uuid := auth.uid();
+  v_code text;
+  v_alpha constant text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  i int;
+begin
+  if v_uid is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
+  if exists (select 1 from public.couples where user_a = v_uid or user_b = v_uid) then
+    return public.my_couple();
+  end if;
+  loop
+    v_code := 'S2-';
+    for i in 1..6 loop
+      v_code := v_code || substr(v_alpha, 1 + floor(random() * length(v_alpha))::int, 1);
+    end loop;
+    exit when not exists (select 1 from public.couples where code = v_code);
+  end loop;
+  insert into public.couples(code, user_a, name_a, warmth_temp, completed_count)
+  values (v_code, v_uid, nullif(left(btrim(coalesce(nickname, '')), 12), ''), 37.5, 0);
+  return public.my_couple();
+end $$;
+
+-- join_couple(code, nickname): caller becomes member B; locked once two members
+create or replace function public.join_couple(p_code text, nickname text default null)
+returns jsonb language plpgsql volatile security definer set search_path = public as $$
+declare
+  v_uid uuid := auth.uid();
+  v_code text := upper(btrim(coalesce(p_code, '')));
+  c public.couples;
+begin
+  if v_uid is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
+  if v_code <> '' and v_code not like 'S2-%' then v_code := 'S2-' || v_code; end if;
+  select * into c from public.couples where code = v_code for update;
+  if not found then raise exception 'code_not_found' using errcode = 'P0002'; end if;
+  if c.user_a = v_uid or c.user_b = v_uid then return public.my_couple(); end if;
+  if exists (select 1 from public.couples where user_a = v_uid or user_b = v_uid) then
+    raise exception 'already_in_couple' using errcode = 'P0001';
+  end if;
+  if c.user_a is not null and c.user_b is not null then
+    raise exception 'couple_full' using errcode = 'P0001';
+  end if;
+  if c.user_a is null then
+    update public.couples set user_a = v_uid,
+      name_a = coalesce(nullif(left(btrim(coalesce(nickname, '')), 12), ''), name_a)
+    where code = v_code;
+  else
+    update public.couples set user_b = v_uid,
+      name_b = coalesce(nullif(left(btrim(coalesce(nickname, '')), 12), ''), name_b)
+    where code = v_code;
+  end if;
+  return public.my_couple();
+end $$;
+
+revoke all on function public.my_couple() from public, anon;
+revoke all on function public.create_couple(text) from public, anon;
+revoke all on function public.join_couple(text, text) from public, anon;
+grant execute on function public.my_couple() to authenticated;
+grant execute on function public.create_couple(text) to authenticated;
+grant execute on function public.join_couple(text, text) to authenticated;
 
 -- App uses REST polling, not postgres_changes. Publication add is optional and
 -- ignored if the table is already a member.
@@ -68,6 +189,7 @@ end $$;
 --   select vault.create_secret(:'gemkey', 'urisai_gemini_api_key', 'Gemini key for public.generate_mission');
 --   -- or vault.update_secret(id, :'gemkey', name, description, key_id) for an existing row.
 -- Model: gemini-3.5-flash-lite. Daily cap: 30 calls per couple_code (Asia/Seoul date).
+-- v8: caller must be authenticated and a member of couple_code.
 -- Input cap: feeling <= 500 chars, couple_code <= 32 chars.
 -- Returns jsonb {empathy,title,message} or null on any error / cap / missing key.
 
@@ -112,6 +234,11 @@ begin
   end if;
 
   v_code := btrim(couple_code);
+
+  -- v8: only a logged-in member of this couple may call it
+  if auth.uid() is null or not public.is_couple_member(v_code) then
+    return null;
+  end if;
 
   insert into public.mission_gen_usage as u(couple_code, day, call_count)
   values (v_code, v_today, 1)
@@ -215,7 +342,8 @@ comment on function public.generate_mission(text, text) is
   'Returns {empathy,title,message} from Gemini, or null on error/quota/cap. Key is read from vault. Daily cap 30 calls per couple_code.';
 
 revoke all on function public.generate_mission(text, text) from public;
-grant execute on function public.generate_mission(text, text) to anon, authenticated;
+revoke all on function public.generate_mission(text, text) from anon;
+grant execute on function public.generate_mission(text, text) to authenticated;
 
 revoke all on vault.decrypted_secrets from public, anon, authenticated;
 revoke all on vault.secrets from public, anon, authenticated;
