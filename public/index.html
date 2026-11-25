@@ -12,8 +12,7 @@
   <link rel="icon" href="./icon-192.png" />
   <title>우리사이 - 커플 감정 번역 & 다정함 코칭</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2/dist/umd/supabase.js" integrity="sha384-A97u3Qnt9GZHURO9YJZRe7VQgGUeFzcv6I1oIGnUTxQrCxnpQMwR0/G8F2zt9abZ" crossorigin="anonymous"></script>
   <style>
     * { -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -51,7 +50,7 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v9";
+      const APP_VERSION = "v9.1";
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
@@ -206,6 +205,8 @@
           if (!raw) return;
           const saved = JSON.parse(raw);
           if (saved && saved.chats) state.chats = Object.assign({ A: welcomeChat('w-a'), B: welcomeChat('w-b') }, saved.chats);
+          // 보내는 도중 앱이 닫혔던 제안은 다시 보낼 수 있게
+          Object.keys(state.chats).forEach((r) => (state.chats[r] || []).forEach((m) => { if (m) delete m.sending; }));
           if (saved && saved.activeTab) state.activeTab = saved.activeTab;
           if (saved && Array.isArray(saved.missions)) state.missions = saved.missions;
         } catch (_e) {}
@@ -312,6 +313,25 @@
         return el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT');
       }
 
+      // 내가 보낸 미션을 연인이 수락하면, 내 폰(보낸 사람)의 비밀방에 알림을 남김
+      function noticeAcceptedBySender(prevMissions, merged) {
+        const prevAccepted = {};
+        (prevMissions || []).forEach((m) => { prevAccepted[m.id] = Boolean(m.accepted); });
+        merged.forEach((m) => {
+          if (!m.accepted || m.targetRole === state.role || m.targetRole === 'BOTH') return;
+          if (!(m.id in prevAccepted) || prevAccepted[m.id]) return; // 처음 보는 미션이거나 이미 알림 처리됨
+          state.chats[state.role] = state.chats[state.role] || [];
+          state.chats[state.role].push({
+            id: 'n-' + m.id,
+            sender: 'bot',
+            type: 'notice',
+            text: (state.partnerName || '연인') + '님이 "' + m.title + '" 미션을 수락했어요 💛',
+            time: nowStr()
+          });
+          showToast((state.partnerName || '연인') + '님이 미션을 수락했어요 💛');
+        });
+      }
+
       function mergeRemoteMissions(rows) {
         const remote = (rows || []).map((r) => ({
           id: r.id,
@@ -378,6 +398,7 @@
           const before = JSON.stringify((state.missions || []).map((m) => [m.id, m.accepted]));
           const after = JSON.stringify(merged.map((m) => [m.id, m.accepted]));
           if (before !== after) {
+            noticeAcceptedBySender(state.missions, merged);
             state.missions = merged;
             changed = true;
           }
@@ -390,11 +411,21 @@
 
       function startSyncLoop() {
         if (syncTimer) clearInterval(syncTimer);
-        if (state.phase === 'ready') {
+        syncTimer = null;
+        if (state.phase === 'ready' && document.visibilityState !== 'hidden') {
           syncFromSupabase();
           syncTimer = setInterval(syncFromSupabase, 6000);
         }
       }
+
+      // 백그라운드에서는 폴링을 멈추고(배터리·요청 절약), 돌아오면 바로 동기화
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') {
+          if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
+        } else if (state.phase === 'ready') {
+          startSyncLoop();
+        }
+      });
 
       async function saveNamesToServer() {
         const payload = state.role === 'A' ? { name_a: state.myName } : { name_b: state.myName };
@@ -597,8 +628,7 @@
         return `
           <div class="text-center mt-4">
             <img src="${AVATAR_SRC}" alt="사이봇" class="w-24 h-24 rounded-3xl mx-auto object-cover border-2 border-[#FF8A80]/40 shadow-md" />
-            <span class="inline-block mt-4 px-3 py-1 rounded-full bg-[#FF8A80]/15 text-[#E0665B] text-[11px] font-bold">커플 감정 번역 & 다정함 코칭</span>
-            <h1 class="text-2xl font-extrabold text-[#2D3436] mt-2 tracking-tight">우리사이</h1>
+            <h1 class="text-2xl font-extrabold text-[#2D3436] mt-4 tracking-tight">우리사이</h1>
             <p class="text-xs text-[#636E72] mt-2 leading-relaxed">${subtitle}</p>
           </div>
         `;
@@ -744,7 +774,7 @@
                       <div class="max-w-[85%] bg-[#2D3436] text-white rounded-2xl rounded-tr-sm px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm">
                         ${esc(msg.text)}
                       </div>
-                      <span class="mt-1 text-[10px] text-[#9AA5A9]">🔒 나만 보는 비밀 기록 · ${esc(msg.time)}</span>
+                      <span class="mt-1 text-[10px] text-[#9AA5A9]">${esc(msg.time)}</span>
                     </div>
                   `;
                 }
@@ -863,10 +893,6 @@
                 </div>`;
               }).join('')}
             </div>
-
-            <button type="button" data-action="open-install" class="w-full py-3 rounded-2xl bg-white border border-[#FF8A80]/30 text-xs font-extrabold text-[#E0665B]">
-              📱 핸드폰 홈 화면에 앱으로 설치하기 가이드
-            </button>
           </div>
         `;
       }
@@ -916,7 +942,7 @@
                   </button>
 
                   ${state.kakaoName ? `<p class="text-[11px] text-[#9AA5A9] text-center">카카오 계정 <span class="font-bold text-[#636E72]">${esc(state.kakaoName)}</span>(으)로 로그인됨</p>` : ''}
-                  <p class="text-[11px] text-[#B2BEC3] text-center pt-1">우리사이 · 커플 감정 번역 &amp; 다정함 코칭<br /><span class="font-mono tracking-wide">${APP_VERSION}</span></p>
+                  <p class="text-[11px] text-[#B2BEC3] text-center pt-1">우리사이 <span class="font-mono tracking-wide">${APP_VERSION}</span></p>
                 </div>
 
                 <button type="button" data-action="logout-ask" class="mt-5 w-full py-3 rounded-2xl border border-[#FF8A80]/30 text-[#E0665B] text-xs font-extrabold bg-white hover:bg-[#FFF0EE]">
@@ -1158,11 +1184,12 @@
           const id = btn.getAttribute('data-id');
           const list = state.chats[state.role] || [];
           const msg = list.find((m) => m.id === id);
-          if (!msg || msg.sent) return;
+          if (!msg || msg.sent || msg.sending) return;
           const draft = msg.drafts[msg.draftIdx || 0];
+          if (!draft) return;
           const targetRole = state.role === 'A' ? 'B' : 'A';
           const missionId = 'm-' + Date.now();
-          msg.sent = true;
+          msg.sending = true;
           const newMission = {
             id: missionId,
             targetRole: targetRole,
@@ -1186,9 +1213,12 @@
               })
             });
           } catch (_e) {
+            msg.sending = false;
             showToast('미션을 보내지 못했어요, 다시 시도해 주세요');
             return;
           }
+          msg.sending = false;
+          msg.sent = true;
           state.missions.unshift(newMission);
           saveState();
           render();
@@ -1196,43 +1226,51 @@
         } else if (action === 'accept-mission') {
           const id = btn.getAttribute('data-id');
           const mission = state.missions.find((m) => m.id === id);
-          if (!mission || mission.accepted) return;
+          if (!mission || mission.accepted || mission.accepting) return;
+          mission.accepting = true;
+          const prevTemp = state.warmthTemp;
+          const prevCount = state.completedCount;
           mission.accepted = true;
           state.warmthTemp = Math.min(45.0, Number((state.warmthTemp + 1.2).toFixed(1)));
           state.completedCount += 1;
-
-          const senderRole = state.role === 'A' ? 'B' : 'A';
-          state.chats[senderRole] = state.chats[senderRole] || [];
-          state.chats[senderRole].push({
-            id: 'n-' + Date.now(),
-            sender: 'bot',
-            type: 'notice',
-            text: '상대방이 오늘의 추천 미션("' + mission.title + '")을 수락했어요! 💛 다정함 온도가 ' + state.warmthTemp.toFixed(1) + '°C로 올랐어요.',
-            time: nowStr()
-          });
-          saveState();
           render();
-          showToast('다정함 스탬프 완료! 온도가 +1.2°C 올랐어요 💛');
-
           try {
-            await sbFetch('daily_missions?id=eq.' + encodeURIComponent(id), {
-              method: 'PATCH',
-              body: JSON.stringify({ accepted: true, accepted_at: new Date().toISOString() })
-            });
-            await sbFetch('couples?code=eq.' + encodeURIComponent(state.coupleCode), {
-              method: 'PATCH',
-              body: JSON.stringify({ warmth_temp: state.warmthTemp, completed_count: state.completedCount })
-            });
+            let c = null;
+            try {
+              c = await rpc('accept_mission', { p_id: id });
+            } catch (err) {
+              // v9.1 SQL not applied yet: fall back to the old direct writes
+              if (err && err.status === 404) {
+                await sbFetch('daily_missions?id=eq.' + encodeURIComponent(id), {
+                  method: 'PATCH',
+                  body: JSON.stringify({ accepted: true, accepted_at: new Date().toISOString() })
+                });
+                await sbFetch('couples?code=eq.' + encodeURIComponent(state.coupleCode), {
+                  method: 'PATCH',
+                  body: JSON.stringify({ warmth_temp: state.warmthTemp, completed_count: state.completedCount })
+                });
+              } else {
+                throw err;
+              }
+            }
+            if (c && c.code) {
+              const t = Number(c.warmth_temp);
+              const n = Number(c.completed_count);
+              if (!Number.isNaN(t)) state.warmthTemp = t;
+              if (!Number.isNaN(n)) state.completedCount = n;
+            }
+            mission.accepting = false;
+            saveState();
+            render();
+            showToast('다정함 스탬프 완료! 온도가 올랐어요 💛');
           } catch (_e) {
+            mission.accepting = false;
             mission.accepted = false;
-            state.warmthTemp = Math.max(37.5, Number((state.warmthTemp - 1.2).toFixed(1)));
-            state.completedCount = Math.max(0, state.completedCount - 1);
-            const noticeList = state.chats[senderRole] || [];
-            if (noticeList.length && noticeList[noticeList.length - 1].type === 'notice') noticeList.pop();
+            state.warmthTemp = prevTemp;
+            state.completedCount = prevCount;
             saveState();
             render();
             showToast('저장에 실패했어요, 다시 시도해 주세요');
-            return;
           }
         } else if (action === 'open-settings') {
           hideToast();
