@@ -84,7 +84,7 @@ update private.paywall_config set unlock_eta = '평일 밤 10시 전';
 set local role authenticated;
 select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
 select pg_temp.ok('all filled -> enabled with values', public.get_paywall_config() =
-  '{"enabled": true, "price_krw": 4900, "checkout_url": "https://example.imweb.me/shop_view/?idx=1", "unlock_eta": "평일 밤 10시 전"}'::jsonb);
+  '{"enabled": true, "price_krw": 4900, "checkout_url": "https://example.imweb.me/shop_view/?idx=1", "unlock_eta": "평일 밤 10시 전", "report_consent": false}'::jsonb);
 select pg_temp.ok('partner not joined -> partner_joined false, nothing else',
   public.my_report() = '{"enabled": true, "partner_joined": false}'::jsonb);
 select pg_temp.raises('partner not joined -> request_pay_code refused', 'select public.request_pay_code()', 'partner_not_joined');
@@ -128,7 +128,7 @@ select pg_temp.ok('one entitlement row for the couple only', (select count(*) = 
 -- admin unlock
 select pg_temp.raises('set_couple_paid unknown code -> pay_code_not_found', 'select private.set_couple_paid(''UR-ZZZZZZ'')', 'pay_code_not_found');
 select pg_temp.ok('admin marks paid (lowercase/space tolerant)',
-  (private.set_couple_paid(' ' || lower((select v from t_v where k = 'code')), true, 'manual', 'imweb-1001')->>'report_paid')::boolean);
+  (private.set_couple_paid(' ' || lower((select v from t_v where k = 'code')), true, 'manual', 'imweb-1001')->>'paid')::boolean);
 set local role authenticated;
 select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
 select pg_temp.ok('A paid: topics [contact, tone] and mission_key contact',
@@ -190,10 +190,12 @@ select pg_temp.ok('sai_chat still SECURITY DEFINER, same search_path, authentica
   (select prosecdef and proconfig @> array['search_path=public, vault, extensions'] from pg_proc where proname = 'sai_chat')
   and has_function_privilege('authenticated', 'public.sai_chat(text,jsonb)', 'EXECUTE')
   and not has_function_privilege('anon', 'public.sai_chat(text,jsonb)', 'EXECUTE'));
-select pg_temp.ok('keyword mapping: one fixed key per message, else other',
+select pg_temp.ok('keyword mapping: one fixed key per message, else default (same key as the app)',
   private.secret_topic('답장이 늦어서 서운해') = 'contact' and private.secret_topic('주말 데이트 계획은 맨날 나만 짜') = 'date'
   and private.secret_topic('유튜브만 봐') = 'phone' and private.secret_topic('말투가 차가워') = 'tone'
-  and private.secret_topic('오늘 날씨 좋다') = 'other' and private.secret_topic(null) = 'other');
+  and private.secret_topic('오늘 날씨 좋다') = 'default' and private.secret_topic(null) = 'default');
+select pg_temp.raises('topic key other no longer accepted (one key: default)',
+  'insert into private.secret_topic_tags(couple_code, author_user, topic) select code, user_a, ''other'' from public.couples limit 1', 'violates check');
 
 -- flag ON, B has NOT confirmed yet: B's messages leave nothing
 set local role authenticated;
@@ -253,12 +255,19 @@ set local role authenticated;
 select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
 select pg_temp.ok('A paid, B has 2 consented entries (< 3): topics are missions only, pre-consent affection ignored',
   public.my_report()->'report'->'topics' = '["contact", "tone"]'::jsonb);
+select pg_temp.ok('B has 2 consented entries: posts_ready false (pay gate line)', (public.my_report()->>'posts_ready')::boolean = false);
+reset role;
+select pg_temp.ok('... no snapshot yet', not exists (select 1 from private.report_snapshots));
+set local role authenticated;
 select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
 select pg_temp.chat((select v from t_v where k = 'c1'), '유튜브만 보고 있어');
 select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
-select pg_temp.ok('same-day 비밀방 keys are not used yet (report cannot be diffed to time one message)',
-  public.my_report()->'report'->'topics' = '["contact", "tone"]'::jsonb);
+select pg_temp.ok('3rd entry: conditions met (3 entries, date x2) -> first report uses 비밀방 keys right away',
+  public.my_report()->'report'->'topics' = '["contact", "date", "tone"]'::jsonb and (public.my_report()->>'posts_ready')::boolean);
 reset role;
+select pg_temp.ok('... and it is frozen for A (one snapshot row, keys only)',
+  (select count(*) = 1 and bool_and(viewer_user = 'a1000000-0000-0000-0000-000000000011' and topics = '["contact", "date", "tone"]'::jsonb)
+   from private.report_snapshots));
 update private.secret_topic_tags set created_at = created_at - interval '1 day'
   where author_user = 'b2000000-0000-0000-0000-000000000022' and created_at >= now();
 update private.secret_report_consents set consented_at = consented_at - interval '1 day'
@@ -271,7 +280,7 @@ select pg_temp.ok('A report: keys only, no counts, no raw text, no markers',
   (select position('MARKER' in t) = 0 and position('유튜브' in t) = 0 and position('서운해' in t) = 0 and position('"n"' in t) = 0
      and jsonb_typeof(r->'report'->'topics'->0) = 'string' from (select public.my_report() r, public.my_report()::text t) x));
 select pg_temp.ok('A report keys unchanged (no new fields leak)', (select array_agg(k order by k) from jsonb_object_keys(public.my_report()) k)
-  = array['enabled', 'paid', 'partner_joined', 'partner_name', 'pay_code', 'ready', 'report', 'way_key']
+  = array['enabled', 'paid', 'partner_joined', 'partner_name', 'pay_code', 'posts_ready', 'ready', 'report', 'way_key']
   and (select array_agg(k order by k) from jsonb_object_keys(public.my_report()->'report') k) = array['mission_key', 'topics']);
 -- A's own messages count only for B's view, never for A's
 select pg_temp.ok('A confirms', (public.consent_secret_report()->>'consented')::boolean);
@@ -307,9 +316,174 @@ select pg_temp.ok('unpaid again: no topics anywhere', position('topics' in publi
 reset role;
 select private.set_couple_paid((select v from t_v where k = 'code'), true);
 
+-- 5) weekly refresh, withdraw, 30-day pass, AI cap (v11 owner decisions 2026-11-26) -----------------------------
+-- weekly: B writes 3 more tone + 2 affection; A's frozen report does not move until the snapshot is 7 days old
+set local role authenticated;
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.chat((select v from t_v where k = 'c1'), '말투가 너무 차가워');
+select pg_temp.chat((select v from t_v where k = 'c1'), '단답만 해서 서운');
+select pg_temp.chat((select v from t_v where k = 'c1'), '짜증 섞인 말투');
+select pg_temp.chat((select v from t_v where k = 'c1'), '표현을 안 해');
+select pg_temp.chat((select v from t_v where k = 'c1'), '애정 표현이 부족해');
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('weekly: new 비밀방 keys within 7 days do not change A report',
+  public.my_report()->'report'->'topics' = '["contact", "date", "tone"]'::jsonb);
+reset role;
+update private.report_snapshots set made_at = now() - interval '6 days 23 hours';
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('weekly: snapshot 6d23h old -> still frozen', public.my_report()->'report'->'topics' = '["contact", "date", "tone"]'::jsonb);
+reset role;
+update private.report_snapshots set made_at = now() - interval '7 days';
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('weekly: snapshot 7 days old -> recomputed (tone 1+3=4, then the 2s in key order: contact, affection)',
+  public.my_report()->'report'->'topics' = '["tone", "contact", "affection"]'::jsonb);
+reset role;
+select pg_temp.ok('... and frozen again from now', (select made_at = now() and topics = '["tone", "contact", "affection"]'::jsonb
+  from private.report_snapshots where viewer_user = 'a1000000-0000-0000-0000-000000000011'));
+
+-- withdraw consent (B turns [확인했어요] off)
+select pg_temp.ok('withdraw_secret_report: authenticated only',
+  has_function_privilege('authenticated', 'public.withdraw_secret_report()', 'EXECUTE')
+  and not has_function_privilege('anon', 'public.withdraw_secret_report()', 'EXECUTE'));
+set local role authenticated;
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.ok('B config says report_consent true before withdrawing', (public.get_paywall_config()->>'report_consent')::boolean);
+select pg_temp.ok('B withdraws', public.withdraw_secret_report() = '{"consented": false}'::jsonb);
+select pg_temp.ok('B config says report_consent false', (public.get_paywall_config()->>'report_consent')::boolean = false);
+select pg_temp.chat((select v from t_v where k = 'c1'), '연락이 없어 WITHDRAWN_MARKER');
+select pg_temp.chat((select v from t_v where k = 'c1'), '답장이 늦어');
+select pg_temp.chat((select v from t_v where k = 'c1'), '카톡 읽씹');
+reset role;
+select pg_temp.ok('after withdraw: B consent gone, B consented keys gone (planted pre-consent rows only), no new keys',
+  not exists (select 1 from private.secret_report_consents where user_id = 'b2000000-0000-0000-0000-000000000022')
+  and pg_temp.tags('b2000000-0000-0000-0000-000000000022') = 0);
+select pg_temp.ok('after withdraw: A frozen report built on B keys deleted, A own consent untouched',
+  not exists (select 1 from private.report_snapshots where viewer_user = 'a1000000-0000-0000-0000-000000000011')
+  and exists (select 1 from private.secret_report_consents where user_id = 'a1000000-0000-0000-0000-000000000011'));
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('after withdraw: A sees missions only, posts_ready false',
+  public.my_report()->'report'->'topics' = '["contact", "tone"]'::jsonb and (public.my_report()->>'posts_ready')::boolean = false);
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.ok('B confirms again', (public.consent_secret_report()->>'consented')::boolean);
+select pg_temp.chat((select v from t_v where k = 'c1'), '데이트 계획 맨날 나만');
+reset role;
+select pg_temp.ok('re-confirm: only posts after it are kept', pg_temp.tags('b2000000-0000-0000-0000-000000000022') = 1);
+set local role authenticated;
+select pg_temp.as_user('c3000000-0000-0000-0000-000000000033');
+select pg_temp.ok('outsider withdraw touches only own couple', public.withdraw_secret_report() = '{"consented": false}'::jsonb);
+reset role;
+select pg_temp.ok('... B and A consents still there', (select count(*) = 2 from private.secret_report_consents
+  where couple_code = (select v from t_v where k = 'c1')));
+
+-- 30-day pass
+select pg_temp.ok('v11 pass tables: no grants, RLS on, no policies',
+  not exists (select 1 from information_schema.role_table_grants where table_schema = 'private'
+              and table_name in ('couple_passes', 'report_snapshots', 'secret_ai_usage') and grantee in ('anon', 'authenticated', 'PUBLIC'))
+  and (select bool_and(relrowsecurity) from pg_class where oid in ('private.couple_passes'::regclass, 'private.report_snapshots'::regclass, 'private.secret_ai_usage'::regclass))
+  and not exists (select 1 from pg_policies where schemaname = 'private' and tablename in ('couple_passes', 'report_snapshots', 'secret_ai_usage')));
+select pg_temp.ok('helper functions not callable by API roles',
+  not has_function_privilege('authenticated', 'private.recompute_paid_until(text)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'private.take_secret_ai_call()', 'EXECUTE')
+  and not has_function_privilege('anon', 'private.take_secret_ai_call()', 'EXECUTE'));
+select pg_temp.ok('couple_entitlements has paid_until, no report_paid', exists (select 1 from information_schema.columns
+  where table_schema = 'private' and table_name = 'couple_entitlements' and column_name = 'paid_until')
+  and not exists (select 1 from information_schema.columns where table_schema = 'private' and table_name = 'couple_entitlements' and column_name = 'report_paid'));
+select private.set_couple_paid((select v from t_v where k = 'code'), false);
+create or replace function pg_temp.until() returns timestamptz language sql as $$ select paid_until from private.couple_entitlements
+  where pay_code = (select v from pg_temp.t_v where k = 'code') $$;
+select pg_temp.ok('lock now: paid_until null', pg_temp.until() is null);
+select pg_temp.ok('manual unlock -> paid, paid_until = now + 30 days',
+  (private.set_couple_paid((select v from t_v where k = 'code'))->>'paid')::boolean and pg_temp.until() = now() + interval '30 days');
+select private.set_couple_paid((select v from t_v where k = 'code'), true, 'portone', 'ORD-1');
+select pg_temp.ok('second order stacks: now + 60 days', pg_temp.until() = now() + interval '60 days');
+select private.set_couple_paid((select v from t_v where k = 'code'), true, 'portone', 'ORD-1');
+select pg_temp.ok('same source + ref again is a no-op', pg_temp.until() = now() + interval '60 days'
+  and (select count(*) = 1 from private.couple_passes where ref = 'ORD-1'));
+select pg_temp.ok('refund of ORD-1 takes back its 30 days only',
+  (private.set_couple_paid((select v from t_v where k = 'code'), false, 'portone', 'ORD-1')->>'paid')::boolean
+  and pg_temp.until() = now() + interval '30 days');
+select pg_temp.ok('admin view shows the newest active pass (manual)', (select paid_source = 'manual' and payment_ref is null
+  from private.couple_entitlements where pay_code = (select v from t_v where k = 'code')));
+select pg_temp.ok('refund of an unknown ref changes nothing', (private.set_couple_paid((select v from t_v where k = 'code'), false, 'portone', 'NOPE')->>'paid')::boolean
+  and pg_temp.until() = now() + interval '30 days');
+-- replay: P1 40 days ago (ended 10 days ago), P2 20 days ago (stacked: ends in 20 days), P3 now (stacked: ends in 50 days)
+select private.set_couple_paid((select v from t_v where k = 'code'), false);
+insert into private.couple_passes(couple_code, source, ref, paid_at) values
+  ((select v from t_v where k = 'c1'), 'portone', 'P1', now() - interval '40 days'),
+  ((select v from t_v where k = 'c1'), 'portone', 'P2', now() - interval '20 days');
+select private.recompute_paid_until((select v from t_v where k = 'c1'));
+select pg_temp.ok('replay: P1 (-40d) + P2 (-20d) -> ends in 20 days', pg_temp.until() = now() + interval '20 days');
+select private.set_couple_paid((select v from t_v where k = 'code'), true, 'portone', 'P3');
+select pg_temp.ok('P3 now stacks -> ends in 50 days', pg_temp.until() = now() + interval '50 days');
+select private.set_couple_paid((select v from t_v where k = 'code'), false, 'portone', 'P1');
+select pg_temp.ok('refund P1 -> P2 alone ends in 10 days, P3 stacks -> 40 days', pg_temp.until() = now() + interval '40 days');
+select private.set_couple_paid((select v from t_v where k = 'code'), false, 'portone', 'P3');
+select pg_temp.ok('refund P3 too -> 10 days left', pg_temp.until() = now() + interval '10 days');
+select private.set_couple_paid((select v from t_v where k = 'code'), true, 'portone', 'P3');
+select pg_temp.ok('re-paid P3 (same ref) comes back -> 40 days', pg_temp.until() = now() + interval '40 days'
+  and (select count(*) = 1 from private.couple_passes where ref = 'P3'));
+-- expiry
+select private.set_couple_paid((select v from t_v where k = 'code'), false);
+insert into private.couple_passes(couple_code, source, paid_at) values ((select v from t_v where k = 'c1'), 'manual', now() - interval '30 days');
+select private.recompute_paid_until((select v from t_v where k = 'c1'));
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('pass bought exactly 30 days ago: expired -> unpaid, no topics, code kept',
+  (select not (r->>'paid')::boolean and r->'report' = 'null'::jsonb and position('topics' in r::text) = 0
+     and r->>'pay_code' = (select v from t_v where k = 'code') from (select public.my_report() r) x)
+  and (public.request_pay_code()->>'paid')::boolean = false);
+reset role;
+select private.set_couple_paid((select v from t_v where k = 'code'));
+set local role authenticated;
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.ok('buy again after expiry -> now + 30 days, both members paid',
+  (public.my_report()->>'paid')::boolean and (public.request_pay_code()->>'paid')::boolean);
+reset role;
+select pg_temp.ok('... paid_until = now + 30 days (expired pass does not stack)', pg_temp.until() = now() + interval '30 days');
+
+-- 비밀방 AI cap (per user per KST day, one constant)
+select pg_temp.ok('cap constant is 20', private.secret_ai_daily_cap() = 20);
+reset role;
+update private.secret_ai_usage set call_count = 19 where user_id = 'a1000000-0000-0000-0000-000000000011';
+select pg_temp.ok('A usage row is keyed by the KST day', exists (select 1 from private.secret_ai_usage
+  where user_id = 'a1000000-0000-0000-0000-000000000011' and day = (timezone('Asia/Seoul', now()))::date));
+insert into t_v select 'http_before', (select count(*) from t_http);
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('20th call of the day still goes to Gemini (stub -> null)', pg_temp.chat((select v from t_v where k = 'c1'), '연락이 늦어 서운해') is null);
+insert into t_v select 'http_20', (select count(*) from t_http);
+select pg_temp.ok('21st call -> {"capped": true} exactly', pg_temp.chat((select v from t_v where k = 'c1'), '말투가 차가워 CAP_MARKER') = '{"capped": true}'::jsonb);
+select pg_temp.ok('generate_mission is capped too (null)', public.generate_mission('연락이 늦어 서운해', (select v from t_v where k = 'c1')) is null);
+reset role;
+select pg_temp.ok('capped calls make no Gemini request', (select count(*) from t_http) = (select v::bigint from t_v where k = 'http_20')
+  and (select v::bigint from t_v where k = 'http_20') > (select v::bigint from t_v where k = 'http_before'));
+select pg_temp.ok('capped call stores no topic key, user counter stays at 20', pg_temp.tags('a1000000-0000-0000-0000-000000000011') = 4
+  and (select call_count = 20 from private.secret_ai_usage where user_id = 'a1000000-0000-0000-0000-000000000011'));
+set local role authenticated;
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.ok('partner is not capped by A', pg_temp.chat((select v from t_v where k = 'c1'), '오늘 좀 서운했어') is distinct from '{"capped": true}'::jsonb);
+reset role;
+update private.paywall_config set enabled = false;
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('cap applies with the paywall flag off too', pg_temp.chat((select v from t_v where k = 'c1'), '안녕') = '{"capped": true}'::jsonb);
+reset role;
+update private.paywall_config set enabled = true;
+update private.secret_ai_usage set day = day - 1 where user_id = 'a1000000-0000-0000-0000-000000000011';
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('next KST day: A can talk again', pg_temp.chat((select v from t_v where k = 'c1'), '안녕') is distinct from '{"capped": true}'::jsonb);
+reset role;
+select pg_temp.ok('usage table holds only user / day / count', (select array_agg(column_name::text order by ordinal_position)
+  = array['user_id', 'day', 'call_count'] from information_schema.columns where table_schema = 'private' and table_name = 'secret_ai_usage'));
+
 -- undo + flag off again
-select pg_temp.ok('admin can undo paid', not (private.set_couple_paid((select v from t_v where k = 'code'), false)->>'report_paid')::boolean);
-select pg_temp.ok('undo clears paid_at / source / ref', (select paid_at is null and paid_source is null and payment_ref is null from private.couple_entitlements));
+select pg_temp.ok('admin can undo paid', not (private.set_couple_paid((select v from t_v where k = 'code'), false)->>'paid')::boolean);
+select pg_temp.ok('undo clears paid_until / paid_at / source / ref', (select paid_until is null and paid_at is null and paid_source is null and payment_ref is null
+  from private.couple_entitlements where pay_code = (select v from t_v where k = 'code')));
 update private.paywall_config set enabled = false;
 set local role authenticated;
 select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
