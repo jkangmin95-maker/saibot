@@ -14,6 +14,8 @@ drop function if exists public.submit_temp(smallint[]);
 drop function if exists public.my_temp();
 drop function if exists private.self_mission_json(private.self_missions, text);
 drop function if exists private.temp_areas_json(numeric[]);
+drop function if exists private.temp_take_floor_snapshot();
+drop table if exists private.temp_floor_snapshot;
 drop table if exists private.mission_sources;
 drop table if exists private.self_missions;
 alter table public.daily_missions drop column if exists sender_id;

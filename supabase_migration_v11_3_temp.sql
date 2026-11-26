@@ -30,9 +30,11 @@
 --     Only activity of the CURRENT two members counts (by user id, not couple_code + role): gratitude_senders.user_id,
 --     daily_missions.sender_id + target_id (both must be one of the two), self_missions.user_id. These id columns are
 --     stamped by triggers from auth.uid() / the seat at insert time and can't be changed by clients. Older rows (no ids)
---     are not counted; instead the FIRST measurement of a pair is floored at couples.warmth_temp (what home showed before
---     measuring), so nobody drops on their first measurement. warmth_temp is only READ, only in submit_temp, only for
---     that floor; it is never written here.
+--     are not counted; instead the FIRST measurement of a pair is floored at what home showed before this migration:
+--     private.temp_floor_snapshot = couples.warmth_temp of every couple that existed when this file first ran (capped at
+--     42.0, tied to the two members seated then). Taken ONCE (temp_config.floor_snapshot_at marker); a re-run adds
+--     nothing. Live couples.warmth_temp (still member-writable) is never used for scoring; couples created later and
+--     re-paired couples get no floor. warmth_temp is never written here.
 -- * 비밀방 source: public.send_secret_mission() (the 신호 보내기 button) inserts the partner's mission and records
 --     private.mission_sources(source = 'secret'), only if the couple used 사이봇 (sai_chat / generate_mission usage)
 --     today or yesterday (KST). create_self_mission() requires such a 'secret' mission sent by the caller in the last
@@ -66,6 +68,8 @@ create table if not exists private.temp_config (
   min_temp numeric not null default 30.0,
   max_temp numeric not null default 45.0
 );
+alter table private.temp_config add column if not exists floor_cap numeric not null default 42.0;
+alter table private.temp_config add column if not exists floor_snapshot_at timestamptz;
 insert into private.temp_config(id) values (1) on conflict do nothing;
 
 create table if not exists private.temp_answers (
@@ -105,6 +109,14 @@ create table if not exists private.self_missions (
   created_at timestamptz not null default now(),
   created_on date not null default ((now() at time zone 'Asia/Seoul')::date),
   unique (couple_code, user_id, created_on)
+);
+
+create table if not exists private.temp_floor_snapshot (
+  couple_code text primary key references public.couples(code) on delete cascade,
+  member_1 uuid,
+  member_2 uuid,
+  floor numeric(4,1) not null,
+  taken_at timestamptz not null default now()
 );
 
 create table if not exists private.mission_sources (
@@ -170,13 +182,40 @@ create trigger temp_stamp_ids before insert or update on public.daily_missions
   for each row execute function private.stamp_mission_ids();
 
 alter table private.mission_sources enable row level security;
+alter table private.temp_floor_snapshot enable row level security;
 alter table private.gratitude_senders enable row level security;
 alter table private.temp_config enable row level security;
 alter table private.temp_answers enable row level security;
 alter table private.temp_measurements enable row level security;
 alter table private.self_missions enable row level security;
 revoke all on table private.temp_config, private.temp_answers, private.temp_measurements, private.self_missions,
-  private.mission_sources, private.gratitude_senders from public, anon, authenticated;
+  private.mission_sources, private.gratitude_senders, private.temp_floor_snapshot from public, anon, authenticated;
+
+-- one-time snapshot of what home shows today, for the first-measurement floor. Does nothing after the first run.
+create or replace function private.temp_take_floor_snapshot()
+returns integer
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  v_n integer := 0;
+  v_cap numeric;
+begin
+  select floor_cap into v_cap from private.temp_config where id = 1 and floor_snapshot_at is null for update;
+  if not found then return 0; end if;
+  insert into private.temp_floor_snapshot(couple_code, member_1, member_2, floor)
+  select c.code, least(c.user_a, c.user_b), greatest(c.user_a, c.user_b), round(least(v_cap, c.warmth_temp), 1)
+    from public.couples c
+   where c.warmth_temp is not null
+  on conflict do nothing;
+  get diagnostics v_n = row_count;
+  update private.temp_config set floor_snapshot_at = now() where id = 1;
+  return v_n;
+end
+$fn$;
+revoke all on function private.temp_take_floor_snapshot() from public, anon, authenticated;
+select private.temp_take_floor_snapshot();
 
 -- area texts (『긍정학개론』). Order = app TEMP_QS themes: 1 고마움 (Q1-2), 2 그럴 수 있지 (Q3-5), 3 고정관념 내려놓기 (Q6-8), 4 책임 (Q9-10)
 create or replace function private.temp_areas_json(p_temps numeric[])
@@ -345,9 +384,10 @@ begin
     v_areas[4] := v_areas[4] + v_m - v_pen;
     for k in 1..4 loop v_areas[k] := round(least(cfg.max_temp, greatest(cfg.min_temp, v_areas[k])), 1); end loop;
     v_total := round(least(cfg.max_temp, greatest(cfg.min_temp, cfg.base + cfg.span * v_all / 40.0 + v_g + v_m - v_pen)), 1);
-    -- first measurement of this pair: never below what home showed before measuring (read-only use of warmth_temp)
+    -- first measurement of this pair: never below what home showed at migration time (snapshot, same two members only)
     if last.round is null then
-      v_total := greatest(v_total, round(least(cfg.max_temp, coalesce(c.warmth_temp, 0)), 1));
+      v_total := greatest(v_total, coalesce((select f.floor from private.temp_floor_snapshot f
+        where f.couple_code = c.code and f.member_1 = least(v_uid, v_partner) and f.member_2 = greatest(v_uid, v_partner)), 0));
     end if;
     insert into private.temp_measurements(couple_code, round, member_1, member_2, total, areas)
     values (c.code, v_round, least(v_uid, v_partner), greatest(v_uid, v_partner), v_total, v_areas)

@@ -70,10 +70,10 @@ select pg_temp.ok('execute: authenticated yes, anon no, PUBLIC no (all 5)',
 select pg_temp.ok('private helpers: no EXECUTE for anon / authenticated / PUBLIC',
   (select bool_and(not has_function_privilege('authenticated', p.oid, 'EXECUTE') and not has_function_privilege('anon', p.oid, 'EXECUTE'))
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'private' and p.proname in ('temp_areas_json', 'self_mission_json')));
-select pg_temp.ok('no function reads secret_emotions; none writes couples; only submit_temp mentions warmth_temp (floor read)',
+select pg_temp.ok('no function reads secret_emotions; none writes couples; only the one-time snapshot reads warmth_temp',
   not exists (select 1 from pg_proc where proname in ('my_temp', 'submit_temp', 'create_self_mission', 'my_self_missions', 'accept_self_mission', 'send_secret_mission', 'temp_areas_json', 'self_mission_json', 'stamp_mission_ids', 'stamp_gratitude_user')
     and (prosrc ilike '%secret_emotions%' or prosrc ~* 'update\s+public\.couples'))
-  and (select array_agg(proname::text) from pg_proc where prosrc ilike '%warmth_temp%' and proname in ('my_temp', 'submit_temp', 'create_self_mission', 'my_self_missions', 'accept_self_mission', 'send_secret_mission', 'temp_areas_json', 'self_mission_json', 'stamp_mission_ids', 'stamp_gratitude_user')) = array['submit_temp']);
+  and (select array_agg(proname::text) from pg_proc where prosrc ilike '%warmth_temp%' and proname in ('my_temp', 'submit_temp', 'create_self_mission', 'my_self_missions', 'accept_self_mission', 'send_secret_mission', 'temp_areas_json', 'self_mission_json', 'stamp_mission_ids', 'stamp_gratitude_user', 'temp_take_floor_snapshot')) = array['temp_take_floor_snapshot']);
 select pg_temp.ok('mission_sources: private, RLS on, no grants',
   (select relrowsecurity from pg_class where oid = 'private.mission_sources'::regclass)
   and not exists (select 1 from information_schema.role_table_grants where table_schema = 'private' and table_name = 'mission_sources' and grantee in ('anon', 'authenticated', 'PUBLIC')));
@@ -88,9 +88,19 @@ select pg_temp.ok('config: one row with the default weights',
 
 -- ---------- fixtures ----------
 -- C1 (u1,u2): base case.  C2 (u3,u4): other couple.  u5: no couple.  C3..C6: scoring.  u6: re-pair later.  u20: alone
-insert into auth.users(id) select pg_temp.u(n) from generate_series(1, 20) n;
+insert into auth.users(id) select pg_temp.u(n) from generate_series(1, 24) n;
+-- couples that "existed at migration time": C1 (39.4) and C9 (44.9 -> capped 42.0). Re-take the one-time snapshot for them.
 insert into public.couples(code, user_a, user_b, name_a, name_b, warmth_temp, created_at) values
   ('TC-C1', pg_temp.u(1), pg_temp.u(2), '지수', '민준', 39.4, now() - interval '100 days'),
+  ('TC-C9', pg_temp.u(21), pg_temp.u(22), null, null, 44.9, now() - interval '100 days');
+update private.temp_config set floor_snapshot_at = null where id = 1;
+select pg_temp.ok('snapshot: taken for the 2 existing couples', private.temp_take_floor_snapshot() = 2);
+select pg_temp.ok('snapshot: C1 39.4 (u1,u2), C9 capped at 42.0',
+  (select floor from private.temp_floor_snapshot where couple_code = 'TC-C1' and member_1 = pg_temp.u(1) and member_2 = pg_temp.u(2)) = 39.4
+  and (select floor from private.temp_floor_snapshot where couple_code = 'TC-C9') = 42.0);
+-- couples created after the migration
+insert into public.couples(code, user_a, user_b, name_a, name_b, warmth_temp, created_at) values
+  ('TC-C10', pg_temp.u(23), pg_temp.u(24), null, null, 44.0, now() - interval '100 days'),
   ('TC-C2', pg_temp.u(3), pg_temp.u(4), '하나', '도윤', 30.0, now() - interval '100 days'),
   ('TC-C3', pg_temp.u(7), pg_temp.u(8), null, null, 44.9, now() - interval '100 days'),
   ('TC-C4', pg_temp.u(9), pg_temp.u(10), null, null, 30.0, now() - interval '100 days'),
@@ -98,6 +108,12 @@ insert into public.couples(code, user_a, user_b, name_a, name_b, warmth_temp, cr
   ('TC-C6', pg_temp.u(13), pg_temp.u(14), null, null, 30.0, now() - interval '100 days'),
   ('TC-C7', pg_temp.u(15), pg_temp.u(16), null, null, 30.0, now() - interval '100 days'),
   ('TC-C8', pg_temp.u(20), null, null, null, 37.5, now() - interval '100 days');
+select pg_temp.ok('snapshot is one-time: a second call adds nothing (new couples get no floor row)',
+  private.temp_take_floor_snapshot() = 0 and (select count(*) from private.temp_floor_snapshot) = 2);
+select pg_temp.ok('temp_floor_snapshot: RLS on, no grants',
+  (select relrowsecurity from pg_class where oid = 'private.temp_floor_snapshot'::regclass)
+  and not exists (select 1 from information_schema.role_table_grants where table_schema = 'private' and table_name = 'temp_floor_snapshot' and grantee in ('anon', 'authenticated', 'PUBLIC'))
+  and not has_function_privilege('authenticated', 'private.temp_take_floor_snapshot()', 'EXECUTE'));
 
 -- ---------- anon ----------
 set local role anon;
@@ -145,14 +161,27 @@ select public.submit_temp(pg_temp.a(array[2,2,2,2,2,2,2,2,2,2]));
 select pg_temp.as_user(pg_temp.u(2)::text);
 select pg_temp.ok('partner before answering: not_started, no hint of u1''s answers',
   public.my_temp() = '{"status": "not_started", "days_left": 0, "next_on": null, "last": null}'::jsonb);
+-- a member raises warmth_temp directly (still allowed by the old column grant) right before finishing
+update public.couples set warmth_temp = 45.0 where code = 'TC-C1';
+select pg_temp.ok('member could write warmth_temp 45.0 directly', (select warmth_temp from public.couples where code = 'TC-C1') = 45.0);
 insert into t_v values ('u2_submit', public.submit_temp(pg_temp.a(array[2,2,1,2,2,1,2,2,2,1])));
 -- u1 [0,1,0,0,2,0,1,0,0,0] -> pts [2,1,2,2,0,2,1,2,2,2]; u2 [2,2,1,2,2,1,2,2,2,1] -> [0,0,1,0,0,1,0,0,0,1]; sum 19/40
 -- areas: 고마움 3/8 -> 35.75, 그럴수있지 5/12 -> 36.17, 고정관념 6/12 -> 37.0, 책임 5/8 -> 38.25 ; total 32 + 4.75 = 36.75 -> 36.8
 select pg_temp.ok('scoring: areas 35.8 / 36.2 / 37.0 / 38.3 (answers only, no activity)',
   (select (pg_temp.temps(v))[2:5] = array[35.8, 36.2, 37.0, 38.3]::numeric[] from t_v where k = 'u2_submit'));
-select pg_temp.ok('first measurement floor: answers give 36.8 but home showed 39.4 -> total 39.4 (no drop)',
+select pg_temp.ok('first measurement floor from snapshot: answers give 36.8, snapshot 39.4 -> total 39.4 (edited warmth 45.0 ignored)',
   (select (pg_temp.temps(v))[1] = 39.4 from t_v where k = 'u2_submit'));
-select pg_temp.ok('floor only reads warmth_temp: still 39.4, not written', (select warmth_temp from public.couples where code = 'TC-C1') = 39.4);
+reset role;
+select pg_temp.ok('warmth_temp not written by measuring (still the edited 45.0)', (select warmth_temp from public.couples where code = 'TC-C1') = 45.0);
+-- C9: existing couple, snapshot capped 42.0, all-worst answers (32.0) -> 42.0.  C10: new couple, warmth 44.0, no floor -> 32.0
+set local role authenticated;
+select pg_temp.as_user(pg_temp.u(21)::text); select public.submit_temp(pg_temp.a(array[2,2,2,2,2,2,2,2,2,2]));
+select pg_temp.as_user(pg_temp.u(22)::text);
+select pg_temp.ok('floor capped at 42.0 (snapshot of 44.9)', (pg_temp.temps(public.submit_temp(pg_temp.a(array[2,2,2,2,2,2,2,2,2,2]))))[1] = 42.0);
+select pg_temp.as_user(pg_temp.u(23)::text); select public.submit_temp(pg_temp.a(array[2,2,2,2,2,2,2,2,2,2]));
+select pg_temp.as_user(pg_temp.u(24)::text);
+select pg_temp.ok('new couple (after migration, warmth 44.0): no floor -> 32.0', (pg_temp.temps(public.submit_temp(pg_temp.a(array[2,2,2,2,2,2,2,2,2,2]))))[1] = 32.0);
+select pg_temp.as_user(pg_temp.u(1)::text);
 select pg_temp.ok('result: status done, days_left 14, next_on = today + 14 (KST)',
   (select v->>'status' = 'done' and (v->>'days_left')::int = 14
      and v->>'next_on' = to_char((now() at time zone 'Asia/Seoul')::date + 14, 'YYYY-MM-DD') from t_v where k = 'u2_submit'));
