@@ -1560,9 +1560,9 @@
       }
 
       // ---- v11.3: 우리 사이 예보 (무료) ----
-      // 두 사람이 따로 10문항을 푼다. 둘 다 풀면 날씨 하나 + 세 줄. 입력은 두 사람의 답과 서버 my_forecast의 숫자
-      // (다정함 온도, 14일 동안 수락한 미션 수, 고마움 카드 보낸 날 수)뿐이다. 비밀방 내용은 쓰지 않는다. Gemini 호출 없음.
-      // 문항 출처: 『긍정학개론』 — 감사(gr), 그럴 수 있지(ok), 고정관념 내려놓기(op), 책임·행동(ac). 보기 0 = 2점, 1 = 1점, 2 = 0점.
+      // 두 사람이 따로 10문항을 푼다. 점수·날씨·세 줄은 서버(my_forecast)가 정해서 보내 준다 — 앱은 답 배열이나 숫자를 받지 않는다.
+      // my_forecast: {status: 'not_started' | 'waiting'} 또는 {status: 'ready', weather: {key, label, emoji}, lines: {strength, grow, action}}
+      // 문항 출처: 『긍정학개론』 — 감사, 그럴 수 있지, 고정관념 내려놓기, 책임·행동. 순서를 바꾸면 SQL의 v_map도 같이 바꿔야 한다.
       const FORECAST_ROUND = 1;
       const FORECAST_QS = [
         { t: 'gr', q: '연인이 해 준 작은 일, 고맙다고 말해요?', o: ['바로 말해요', '마음속으로만 해요', '잘 안 하게 돼요'] },
@@ -1576,61 +1576,22 @@
         { t: 'ac', q: '우리 사이에 문제가 생기면 먼저 보는 곳은?', o: ['내가 바꿀 수 있는 것', '둘 다 반반', '연인이 바뀌어야 할 것'] },
         { t: 'ac', q: '마음을 어떻게 보여 줘요?', o: ['작은 행동으로 자주', '특별한 날에 몰아서', '말 안 해도 알 거라 생각해요'] }
       ];
-      const FORECAST_THEMES = {
-        gr: { strong: '고마운 걸 고맙다고 말하는 힘이 있어요', grow: '고마움을 말로 꺼내는 일', act: '자기 전에 오늘 고마웠던 일 하나를 말로 전해 보기' },
-        ok: { strong: '작은 일은 "그럴 수 있지" 하고 넘기는 여유가 있어요', grow: '서운한 순간을 오래 붙잡지 않는 일', act: '서운한 순간이 오면 "그럴 수 있지"를 먼저 말해 보기' },
-        op: { strong: '서로 다른 생각을 그대로 인정해 줘요', grow: '"당연히 이래야지"를 내려놓는 일', act: '"당연히"라는 말이 나오면 "그럴 수도 있지"로 바꿔 말해 보기' },
-        ac: { strong: '마음을 행동으로 먼저 보여 줘요', grow: '내가 먼저 바꿀 수 있는 걸 찾는 일', act: '연인에게 바라는 것 하나를 내가 먼저 해 보기' }
-      };
-      const FORECAST_ORDER = ['gr', 'ok', 'op', 'ac'];
-      const FORECAST_WEATHER = { sunny: { emoji: '☀️', label: '맑음' }, partly: { emoji: '🌤️', label: '구름 조금' }, cloudy: { emoji: '☁️', label: '흐림' } };
-
-      // 규칙 (화면에는 숫자를 보여 주지 않는다)
-      // * 답 점수: 보기 0/1/2 → 2/1/0점. 두 사람 합 0~40.
-      // * 기록 보너스: 다정함 온도 38.5 이상 +4, 고마움 카드 보낸 날 3일 이상 +3, 수락한 미션 2개 이상 +3 (최대 50).
-      // * 날씨: 34 이상 맑음, 22 이상 구름 조금, 그 아래 흐림. 비·폭풍은 없다.
-      // * 주제 점수 = 두 사람 답 점수 / 만점 (+ 고마움 카드 3일 이상이면 감사 +0.25, 미션 2개 이상이면 행동 +0.25).
-      //   가장 높은 주제 = 지금 단단한 부분, 나머지 중 가장 낮은 주제 = 같이 키울 부분, 그 주제의 할 일 = 이번 주 해 볼 일.
-      //   같은 점수면 감사 → 그럴 수 있지 → 고정관념 → 행동 순서.
-      function forecastResult(f) {
-        const a = Array.isArray(f.mine) ? f.mine : [];
-        const b = Array.isArray(f.partner) ? f.partner : [];
-        const pts = (v) => { const n = Number(v); return n === 0 ? 2 : n === 1 ? 1 : 0; };
-        const theme = {}; const max = {};
-        let total = 0;
-        FORECAST_QS.forEach((q, i) => {
-          const p = pts(a[i]) + pts(b[i]);
-          total += p;
-          theme[q.t] = (theme[q.t] || 0) + p;
-          max[q.t] = (max[q.t] || 0) + 4;
-        });
-        const warmth = Number(f.warmth_temp) || 0;
-        const grat = Number(f.gratitude_days) || 0;
-        const done = Number(f.missions_done) || 0;
-        total += (warmth >= 38.5 ? 4 : 0) + (grat >= 3 ? 3 : 0) + (done >= 2 ? 3 : 0);
-        const ratio = {};
-        FORECAST_ORDER.forEach((k) => { ratio[k] = theme[k] / max[k]; });
-        if (grat >= 3) ratio.gr += 0.25;
-        if (done >= 2) ratio.ac += 0.25;
-        let strong = FORECAST_ORDER[0];
-        FORECAST_ORDER.forEach((k) => { if (ratio[k] > ratio[strong]) strong = k; });
-        let grow = null;
-        FORECAST_ORDER.forEach((k) => { if (k !== strong && (grow === null || ratio[k] < ratio[grow])) grow = k; });
-        const w = total >= 34 ? 'sunny' : total >= 22 ? 'partly' : 'cloudy';
-        return { weather: FORECAST_WEATHER[w], strong: FORECAST_THEMES[strong].strong, grow: FORECAST_THEMES[grow].grow, act: FORECAST_THEMES[grow].act };
+      function forecastReady() {
+        const f = state.forecast;
+        return Boolean(f && f.status === 'ready' && f.weather && f.lines);
       }
 
       let forecastCheckedAt = 0;
       // 서버 상태 새로고침. 함수가 아직 없으면(SQL 적용 전) null → 카드가 안 보인다. 바뀌었으면 true
       async function refreshForecast(force) {
         if (state.phase !== 'ready' || !state.partnerJoined) return false;
-        if (state.forecast && state.forecast.ready) return false;
+        if (forecastReady()) return false;
         if (!force && Date.now() - forecastCheckedAt < 15000) return false;
         forecastCheckedAt = Date.now();
         const before = JSON.stringify(state.forecast);
         const f = await sbFetchQuiet('rpc/my_forecast', { method: 'POST', body: JSON.stringify({ p_round: FORECAST_ROUND }) });
-        if (f && typeof f === 'object' && !Array.isArray(f) && 'me_done' in f) state.forecast = f;
-        if (state.forecastView === 'wait' && state.forecast && state.forecast.ready) state.forecastView = 'result';
+        if (f && typeof f === 'object' && !Array.isArray(f) && typeof f.status === 'string') state.forecast = f;
+        if (state.forecastView === 'wait' && forecastReady()) state.forecastView = 'result';
         return before !== JSON.stringify(state.forecast);
       }
 
@@ -1640,7 +1601,7 @@
         return `
             <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
               <p class="text-xs font-bold text-[#2D3436]">우리 사이 예보</p>
-              <button type="button" data-action="open-forecast" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">${state.forecast.ready ? '예보 보기' : '같이 풀어 보기'}</button>
+              <button type="button" data-action="open-forecast" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">${forecastReady() ? '예보 보기' : '같이 풀어 보기'}</button>
             </div>`;
       }
 
@@ -1659,7 +1620,8 @@
       function renderForecastScreen() {
         const v = state.forecastView;
         const CARD = 'bg-white rounded-3xl p-5 border border-[#FF8A80]/15 shadow-[0_8px_28px_rgba(45,52,54,0.06)] animate-pop';
-        const PRIMARY = 'w-full py-3.5 rounded-2xl bg-[#FF8A80] hover:bg-[#F26D63] active:scale-[0.99] text-white text-sm font-extrabold shadow-[0_6px_20px_rgba(255,138,128,0.4)] transition-all';
+        // 앱의 다른 버튼과 같은 모양 (분홍 그림자 없음)
+        const PRIMARY = 'w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all';
         let inner = '';
         if (v === 'question') {
           const i = Math.min(state.forecastIdx || 0, FORECAST_QS.length - 1);
@@ -1680,8 +1642,8 @@
                   <h2 class="text-lg font-extrabold text-[#2D3436] text-center pt-1">${esc((state.partnerName || '연인') + '님이 풀면 결과가 열려요')}</h2>
                   <button type="button" data-action="forecast-send" class="${PRIMARY}">카톡으로 보내기</button>
                 </div>`;
-        } else if (v === 'result' && state.forecast && state.forecast.ready) {
-          const r = forecastResult(state.forecast);
+        } else if (v === 'result' && forecastReady()) {
+          const w = state.forecast.weather; const l = state.forecast.lines;
           const line = (label, text) => `
                     <div class="rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-3.5 text-left">
                       <p class="text-[11px] font-bold text-[#FF8A80]">${esc(label)}</p>
@@ -1690,11 +1652,11 @@
           const pay = reportVisible() && !state.report.paid ? renderPayArea() : '';
           inner = `
                 <div class="${CARD} space-y-3.5 text-center">
-                  <p class="text-6xl leading-none pt-2" aria-hidden="true">${r.weather.emoji}</p>
-                  <p class="text-xl font-extrabold text-[#2D3436]">${esc(r.weather.label)}</p>
-                  ${line('지금 단단한 부분', r.strong)}
-                  ${line('같이 키울 부분', r.grow)}
-                  ${line('이번 주 해 볼 일', r.act)}
+                  <p class="text-6xl leading-none pt-2" aria-hidden="true">${esc(w.emoji)}</p>
+                  <p class="text-xl font-extrabold text-[#2D3436]">${esc(w.label)}</p>
+                  ${line('지금 단단한 부분', l.strength)}
+                  ${line('같이 키울 부분', l.grow)}
+                  ${line('이번 주 해 볼 일', l.action)}
                   <p class="text-[12px] text-[#9AA5A9] pt-1">재미로 보는 테스트예요</p>
                 </div>
                 <button type="button" data-action="forecast-share" class="${PRIMARY}">친구 커플에게 보내기</button>
@@ -2260,11 +2222,11 @@
           const f = state.forecast;
           if (!f) return;
           hideToast();
-          if (f.ready) state.forecastView = 'result';
-          else if (f.me_done) state.forecastView = 'wait';
+          if (forecastReady()) state.forecastView = 'result';
+          else if (f.status === 'waiting') state.forecastView = 'wait';
           else { state.forecastView = 'question'; state.forecastIdx = 0; state.forecastAnswers = []; }
           render();
-          if (!f.ready && await refreshForecast(true)) render();
+          if (!forecastReady() && await refreshForecast(true)) render();
           if (state.forecastView === 'result' && paywallOn() && await refreshPaywall(true)) render();
         } else if (action === 'close-forecast') {
           state.forecastView = null;
@@ -2277,8 +2239,8 @@
           state.busy = true;
           try {
             const f = await rpc('submit_forecast', { p_round: FORECAST_ROUND, p_answers: state.forecastAnswers.slice(0, FORECAST_QS.length) });
-            if (f && 'me_done' in f) state.forecast = f;
-            state.forecastView = state.forecast && state.forecast.ready ? 'result' : 'wait';
+            if (f && typeof f.status === 'string') state.forecast = f;
+            state.forecastView = forecastReady() ? 'result' : 'wait';
           } catch (_e) {
             showToast('잠시 후 다시 시도해 주세요');
           }
@@ -2290,9 +2252,9 @@
           const url = forecastAppUrl();
           shareOrCopy({ title: '우리사이', text: text, url: url }, text + '\n' + url);
         } else if (action === 'forecast-share') {
-          if (!state.forecast || !state.forecast.ready) return;
-          const r = forecastResult(state.forecast);
-          const text = '우리 사이 예보: ' + r.weather.emoji + ' ' + r.weather.label + '\n너희 커플도 같이 풀어 봐!';
+          if (!forecastReady()) return;
+          const w = state.forecast.weather;
+          const text = '우리 사이 예보 나왔어. ' + w.emoji + ' ' + w.label + '\n너희 커플 날씨는 어때? 둘이 따로 풀면 나와.';
           const url = forecastAppUrl();
           shareOrCopy({ title: '우리사이', text: text, url: url }, text + '\n' + url);
         } else if (action === 'open-quiz') {

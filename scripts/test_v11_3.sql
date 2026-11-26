@@ -86,9 +86,26 @@ select pg_temp.raises('my_forecast(0) -> bad_round', 'select public.my_forecast(
 select pg_temp.raises('my_forecast(1001) -> bad_round', 'select public.my_forecast(1001)', 'bad_round');
 select pg_temp.raises('submit round null -> bad_round', 'select public.submit_forecast(null, array[0,0,0,0,0,0,0,0,0,0]::smallint[])', 'bad_round');
 select pg_temp.raises('round 0 -> bad_round', 'select public.submit_forecast(0, array[0,0,0,0,0,0,0,0,0,0]::smallint[])', 'bad_round');
+-- shape helper: a ready reply has exactly round/status/weather/lines, no arrays, and round is its only number
+create or replace function pg_temp.ready_shape(v jsonb) returns boolean language sql as $$
+  select (select array_agg(k order by k) from jsonb_object_keys(v) k) = array['lines', 'round', 'status', 'weather']
+     and v->>'status' = 'ready'
+     and (select array_agg(k order by k) from jsonb_object_keys(v->'weather') k) = array['emoji', 'key', 'label']
+     and (select array_agg(k order by k) from jsonb_object_keys(v->'lines') k) = array['action', 'grow', 'strength']
+     and (select count(*) from jsonb_path_query(v, 'strict $.** ? (@.type() == "array")')) = 0
+     and (select count(*) from jsonb_path_query(v, 'strict $.** ? (@.type() == "number")')) = 1
+     and not (v ?| array['mine', 'partner', 'answers', 'total', 'score', 'warmth_temp', 'gratitude_days', 'missions_done', 'me_done', 'partner_done']) $$;
+grant execute on all functions in schema pg_temp to authenticated;
+-- expected lines
+create temp table t_x(k text primary key, v jsonb);
+insert into t_x values
+  ('partly_ac_ok', '{"round": 1, "status": "ready", "weather": {"key": "partly", "label": "구름 조금", "emoji": "🌤️"}, "lines": {"strength": "마음을 행동으로 먼저 보여 줘요", "grow": "서운한 순간을 오래 붙잡지 않는 일", "action": "서운한 순간이 오면 \"그럴 수 있지\"를 먼저 말해 보기"}}'),
+  ('sunny_ac_ok', '{"round": 1, "status": "ready", "weather": {"key": "sunny", "label": "맑음", "emoji": "☀️"}, "lines": {"strength": "마음을 행동으로 먼저 보여 줘요", "grow": "서운한 순간을 오래 붙잡지 않는 일", "action": "서운한 순간이 오면 \"그럴 수 있지\"를 먼저 말해 보기"}}');
+grant all on t_x to authenticated;
+
 insert into t_v values ('u1_submit', public.submit_forecast(1, array[0,1,0,0,2,0,1,0,0,0]::smallint[]));
-select pg_temp.ok('u1 after submit: me_done, partner not, not ready, no answers in reply',
-  (select v = '{"round": 1, "me_done": true, "partner_done": false, "ready": false}'::jsonb from t_v where k = 'u1_submit'));
+select pg_temp.ok('u1 after submit: exactly {round, status: waiting}',
+  (select v = '{"round": 1, "status": "waiting"}'::jsonb from t_v where k = 'u1_submit'));
 insert into t_v values ('u1_again', public.submit_forecast(1, array[2,2,2,2,2,2,2,2,2,2]::smallint[]));
 select pg_temp.raises('member: direct SELECT denied', 'select count(*) from public.forecast_answers', 'permission denied');
 select pg_temp.raises('UPDATE denied', $q$update public.forecast_answers set answers = array[2,2,2,2,2,2,2,2,2,2]::smallint[]$q$, 'permission denied');
@@ -97,45 +114,66 @@ select pg_temp.raises('DELETE denied', 'delete from public.forecast_answers', 'p
 -- ---------- u2 (partner) before answering ----------
 select pg_temp.as_user('f1000000-0000-0000-0000-000000000002');
 select pg_temp.raises('partner: direct SELECT denied (cannot peek)', 'select * from public.forecast_answers', 'permission denied');
-select pg_temp.ok('partner my_forecast: partner_done true, not ready, no answers',
-  public.my_forecast(1) = '{"round": 1, "me_done": false, "partner_done": true, "ready": false}'::jsonb);
+select pg_temp.ok('partner before answering: exactly {round, status: not_started} (nothing about u1''s answers)',
+  public.my_forecast(1) = '{"round": 1, "status": "not_started"}'::jsonb);
 insert into t_v values ('u2_submit', public.submit_forecast(1, array[2,2,1,2,2,1,2,2,2,1]::smallint[]));
-select pg_temp.ok('u2 after submit: ready with both answer arrays (mine = u2)',
-  (select v->>'ready' = 'true' and v->'mine' = '[2,2,1,2,2,1,2,2,2,1]'::jsonb and v->'partner' = '[0,1,0,0,2,0,1,0,0,0]'::jsonb from t_v where k = 'u2_submit'));
-select pg_temp.ok('signals: warmth 39.4, gratitude_days 3 (14 KST days), missions_done 2 (accepted, 14 days)',
-  (select (v->>'warmth_temp')::numeric = 39.4 and (v->>'gratitude_days')::int = 3 and (v->>'missions_done')::int = 2 from t_v where k = 'u2_submit'));
+select pg_temp.ok('u2 ready reply: only round/status/weather/lines, no answers/totals/signals, no arrays, round only number',
+  (select pg_temp.ready_shape(v) from t_v where k = 'u2_submit'));
+-- 19 answer points + warmth 39.4 (+4) + gratitude 3 days in 14 (+3) + missions 2 accepted in 14 (+3) = 29 -> 구름 조금
+-- themes: 감사 .375+.25, 그럴 수 있지 .417, 고정관념 .5, 행동 .625+.25 -> strength 행동, grow 그럴 수 있지
+select pg_temp.ok('u2 ready: 29 -> 🌤️ 구름 조금, strength 행동, grow/action 그럴 수 있지 (signals counted in 14-day window only)',
+  (select v = (select v from t_x where k = 'partly_ac_ok') from t_v where k = 'u2_submit'));
 
 select pg_temp.as_user('f1000000-0000-0000-0000-000000000001');
-select pg_temp.ok('u1 repeat submit changed nothing (first answers kept)',
-  (select public.my_forecast(1)->'mine') = '[0,1,0,0,2,0,1,0,0,0]'::jsonb);
-select pg_temp.ok('u1 my_forecast ready, mine/partner swapped vs u2',
-  (select v->'mine' = '[0,1,0,0,2,0,1,0,0,0]'::jsonb and v->'partner' = '[2,2,1,2,2,1,2,2,2,1]'::jsonb from (select public.my_forecast(1) v) s));
-select pg_temp.ok('round 2 is separate (not done)', public.my_forecast(2)->>'me_done' = 'false');
+select pg_temp.ok('u1 sees the same result (repeat submit changed nothing)',
+  public.my_forecast(1) = (select v from t_x where k = 'partly_ac_ok'));
+select pg_temp.ok('u1 ready reply shape: no answers/totals keys', pg_temp.ready_shape(public.my_forecast(1)));
+select pg_temp.ok('round 2 is separate: not_started', public.my_forecast(2) = '{"round": 2, "status": "not_started"}'::jsonb);
 
 -- ---------- other couple ----------
 select pg_temp.as_user('f1000000-0000-0000-0000-000000000003');
 select pg_temp.raises('other couple: direct SELECT denied', 'select * from public.forecast_answers where couple_code = ''FC-C1''', 'permission denied');
 select public.submit_forecast(1, array[1,1,1,1,1,1,1,1,1,1]::smallint[]);
-select pg_temp.ok('C2 my_forecast does not see C1: partner_done false',
-  public.my_forecast(1) = '{"round": 1, "me_done": true, "partner_done": false, "ready": false}'::jsonb);
+select pg_temp.ok('C2 my_forecast does not see C1: waiting',
+  public.my_forecast(1) = '{"round": 1, "status": "waiting"}'::jsonb);
 select pg_temp.as_user('f1000000-0000-0000-0000-000000000005');
 select pg_temp.raises('non-member: direct SELECT denied', 'select * from public.forecast_answers', 'permission denied');
 reset role;
 select pg_temp.ok('stored rows: 3 (C1 x2, C2 x1)', (select count(*) from public.forecast_answers) = 3);
 
+-- ---------- threshold: one level table, 34 = 맑음, 33 = 구름 조금 (C3: warmth 37.5, no signals) ----------
+insert into auth.users(id) values ('f1000000-0000-0000-0000-000000000007'), ('f1000000-0000-0000-0000-000000000008');
+insert into public.couples(code, user_a, user_b, warmth_temp) values
+  ('FC-C3', 'f1000000-0000-0000-0000-000000000007', 'f1000000-0000-0000-0000-000000000008', 37.5);
+set local role authenticated;
+select pg_temp.as_user('f1000000-0000-0000-0000-000000000007');
+select public.submit_forecast(1, array[0,0,0,0,0,0,0,0,1,2]::smallint[]);  -- 17
+select public.submit_forecast(2, array[0,0,0,0,0,0,0,0,1,2]::smallint[]);  -- 17
+select pg_temp.as_user('f1000000-0000-0000-0000-000000000008');
+select pg_temp.ok('total 34 -> ☀️ 맑음', public.submit_forecast(1, array[0,0,0,0,0,0,0,0,1,2]::smallint[])->'weather' = '{"key": "sunny", "label": "맑음", "emoji": "☀️"}'::jsonb);  -- 17
+select pg_temp.ok('total 33 -> 🌤️ 구름 조금', public.submit_forecast(2, array[0,0,0,0,0,0,0,0,2,2]::smallint[])->'weather' = '{"key": "partly", "label": "구름 조금", "emoji": "🌤️"}'::jsonb);  -- 16
+select public.submit_forecast(3, array[2,2,2,2,2,2,2,2,2,2]::smallint[]);
+select pg_temp.as_user('f1000000-0000-0000-0000-000000000007');
+select pg_temp.ok('all-worst answers (total 0), no signals -> still 🌤️ 구름 조금 (no lower level)',
+  public.submit_forecast(3, array[2,2,2,2,2,2,2,2,2,2]::smallint[])->'weather'->>'key' = 'partly');
+select pg_temp.ok('my_forecast source has no 흐림/비/폭풍 level',
+  (select prosrc not like '%흐림%' and prosrc not like '%cloudy%' and prosrc not like '%''비''%' and prosrc not like '%폭풍%' from pg_proc where proname = 'my_forecast'));
+reset role;
+
 -- ---------- re-pair: u2 leaves C1, u6 takes the B seat. u2's old row stays in the table ----------
 update public.couples set user_b = 'f1000000-0000-0000-0000-000000000006' where code = 'FC-C1';
 set local role authenticated;
 select pg_temp.as_user('f1000000-0000-0000-0000-000000000006');
-select pg_temp.ok('new partner: old partner''s answers not counted (me_done false, partner_done = u1, no answers)',
-  public.my_forecast(1) = '{"round": 1, "me_done": false, "partner_done": true, "ready": false}'::jsonb);
+select pg_temp.ok('new partner: old partner''s row not counted -> not_started',
+  public.my_forecast(1) = '{"round": 1, "status": "not_started"}'::jsonb);
 select pg_temp.as_user('f1000000-0000-0000-0000-000000000001');
-select pg_temp.ok('u1 after re-pair: old partner''s row ignored (partner_done false, no answers)',
-  public.my_forecast(1) = '{"round": 1, "me_done": true, "partner_done": false, "ready": false}'::jsonb);
+select pg_temp.ok('u1 after re-pair: old partner''s row ignored -> waiting',
+  public.my_forecast(1) = '{"round": 1, "status": "waiting"}'::jsonb);
 select pg_temp.as_user('f1000000-0000-0000-0000-000000000006');
 insert into t_v values ('u6_submit', public.submit_forecast(1, array[1,0,1,0,1,0,1,0,1,0]::smallint[]));
-select pg_temp.ok('after new partner answers: ready with u1 + u6 answers only (never u2)',
-  (select v->>'ready' = 'true' and v->'mine' = '[1,0,1,0,1,0,1,0,1,0]'::jsonb and v->'partner' = '[0,1,0,0,2,0,1,0,0,0]'::jsonb from t_v where k = 'u6_submit'));
+-- u1 + u6 = 31 + 10 = 41 -> 맑음 (u1 + u2 would be 29 -> 구름 조금), so u2's row is not used
+select pg_temp.ok('after new partner answers: result from u1 + u6 only (☀️ 맑음, not u2''s 구름 조금)',
+  (select v = (select v from t_x where k = 'sunny_ac_ok') from t_v where k = 'u6_submit'));
 select pg_temp.as_user('f1000000-0000-0000-0000-000000000002');
 select pg_temp.raises('old partner (no couple now): my_forecast -> couple_not_found', 'select public.my_forecast(1)', 'couple_not_found');
 reset role;

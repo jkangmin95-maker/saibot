@@ -10,11 +10,18 @@
 --   authenticated only. The couple and user come from auth.uid(), so nobody can answer for someone else or another couple.
 --   One answer per user per round (a repeat call changes nothing).
 -- * public.my_forecast(int): the caller's couple only, and only the rows of its CURRENT two members (couples.user_a/user_b):
---   rows of a former partner under the same couple code are never returned or counted. Returns the partner's answers
---   only when both answered. Bad round (null / outside 1..1000) -> 'bad_round', same as submit_forecast.
---   Signals for the result: couples.warmth_temp, accepted daily_missions and private.gratitude_sends counts in the 14 KST
---   days ending at the later answer. Counts only. Nothing here reads public.secret_emotions or any 비밀방 table.
--- * No dynamic SQL. No Gemini call. The weather/lines are computed in the app from these values (fixed rules).
+--   rows of a former partner under the same couple code are never read. Bad round (null / outside 1..1000) -> 'bad_round'.
+--   Output (scored here, on the server):
+--     {"round", "status": "not_started" | "waiting"}                       (me not done / me done, partner not)
+--     {"round", "status": "ready", "weather": {key, label, emoji}, "lines": {strength, grow, action}}
+--   Never returned: either person's answers, totals, warmth, mission or gratitude counts.
+--   Scoring inputs: both answer arrays + couples.warmth_temp + counts of accepted daily_missions and private.gratitude_sends
+--   in the 14 KST days ending at the later answer. Nothing here reads public.secret_emotions or any 비밀방 table.
+-- * Rule: answer points (option 0/1/2 -> 2/1/0, both people, 0..40) + warmth >= 38.5 +4, gratitude days >= 3 +3,
+--   accepted missions >= 2 +3. Weather from one level table in my_forecast: >= 34 맑음 ☀️, else 구름 조금 🌤️.
+--   Theme ratio = points / max (+0.25 감사 if gratitude days >= 3, +0.25 행동 if missions >= 2). Highest = strength,
+--   lowest of the rest = grow + its action. Ties: 감사, 그럴 수 있지, 고정관념, 행동.
+-- * No dynamic SQL. No Gemini call.
 
 begin;
 
@@ -47,37 +54,89 @@ declare
   v_uid uuid := auth.uid();
   c public.couples;
   v_partner uuid;
-  v_role text;
   mine public.forecast_answers;
   theirs public.forecast_answers;
   v_ref timestamptz;
   v_day date;
   v_grat integer := 0;
   v_done integer := 0;
+  -- question i (1..10) -> theme: 1 감사, 2 그럴 수 있지, 3 고정관념 내려놓기, 4 책임·행동 (order = app FORECAST_QS)
+  v_map constant integer[] := array[1, 1, 2, 2, 2, 3, 3, 3, 4, 4];
+  v_strength constant text[] := array[
+    '고마운 걸 고맙다고 말하는 힘이 있어요',
+    '작은 일은 "그럴 수 있지" 하고 넘기는 여유가 있어요',
+    '서로 다른 생각을 그대로 인정해 줘요',
+    '마음을 행동으로 먼저 보여 줘요'];
+  v_grow constant text[] := array[
+    '고마움을 말로 꺼내는 일',
+    '서운한 순간을 오래 붙잡지 않는 일',
+    '"당연히 이래야지"를 내려놓는 일',
+    '내가 먼저 바꿀 수 있는 걸 찾는 일'];
+  v_action constant text[] := array[
+    '자기 전에 오늘 고마웠던 일 하나를 말로 전해 보기',
+    '서운한 순간이 오면 "그럴 수 있지"를 먼저 말해 보기',
+    '"당연히"라는 말이 나오면 "그럴 수도 있지"로 바꿔 말해 보기',
+    '연인에게 바라는 것 하나를 내가 먼저 해 보기'];
+  v_pts integer[] := array[0, 0, 0, 0];
+  v_max integer[] := array[0, 0, 0, 0];
+  v_ratio numeric[] := array[0, 0, 0, 0];
+  v_total integer := 0;
+  v_p integer;
+  v_strong integer := 1;
+  v_low integer;
+  w record;
 begin
   if v_uid is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
   select * into c from public.couples where user_a = v_uid or user_b = v_uid order by created_at limit 1;
   if not found then raise exception 'couple_not_found' using errcode = 'P0002'; end if;
   if p_round is null or p_round not between 1 and 1000 then raise exception 'bad_round' using errcode = '22023'; end if;
-  v_role := case when c.user_a = v_uid then 'A' else 'B' end;
-  v_partner := case when v_role = 'A' then c.user_b else c.user_a end;
+  -- only the CURRENT two members of the couple (a former partner's rows are never read)
+  v_partner := case when c.user_a = v_uid then c.user_b else c.user_a end;
   select * into mine from public.forecast_answers where couple_code = c.code and user_id = v_uid and round = p_round;
   if v_partner is not null then
     select * into theirs from public.forecast_answers where couple_code = c.code and user_id = v_partner and round = p_round;
   end if;
-  if mine.user_id is null or theirs.user_id is null then
-    return jsonb_build_object('round', p_round, 'me_done', mine.user_id is not null,
-      'partner_done', theirs.user_id is not null, 'ready', false);
-  end if;
+  if mine.user_id is null then return jsonb_build_object('round', p_round, 'status', 'not_started'); end if;
+  if theirs.user_id is null then return jsonb_build_object('round', p_round, 'status', 'waiting'); end if;
+
+  -- signals (counts only, never returned): 14 days ending at the later answer
   v_ref := greatest(mine.created_at, theirs.created_at);
   v_day := (v_ref at time zone 'Asia/Seoul')::date;
   select count(*) into v_grat from private.gratitude_sends
    where couple_code = c.code and sent_on > v_day - 14 and sent_on <= v_day;
   select count(*) into v_done from public.daily_missions
    where couple_code = c.code and accepted and accepted_at > v_ref - interval '14 days' and accepted_at <= v_ref;
-  return jsonb_build_object('round', p_round, 'me_done', true, 'partner_done', true, 'ready', true,
-    'mine', to_jsonb(mine.answers), 'partner', to_jsonb(theirs.answers),
-    'warmth_temp', c.warmth_temp, 'gratitude_days', v_grat, 'missions_done', v_done);
+
+  -- answer points: option 0/1/2 -> 2/1/0, both people summed (0..40)
+  for i in 1..10 loop
+    v_p := (2 - mine.answers[i]) + (2 - theirs.answers[i]);
+    v_total := v_total + v_p;
+    v_pts[v_map[i]] := v_pts[v_map[i]] + v_p;
+    v_max[v_map[i]] := v_max[v_map[i]] + 4;
+  end loop;
+  v_total := v_total + case when c.warmth_temp >= 38.5 then 4 else 0 end
+                     + case when v_grat >= 3 then 3 else 0 end
+                     + case when v_done >= 2 then 3 else 0 end;
+  for k in 1..4 loop v_ratio[k] := v_pts[k]::numeric / v_max[k]; end loop;
+  if v_grat >= 3 then v_ratio[1] := v_ratio[1] + 0.25; end if;
+  if v_done >= 2 then v_ratio[4] := v_ratio[4] + 0.25; end if;
+  -- strongest theme; ties -> 감사, 그럴 수 있지, 고정관념, 행동 order
+  for k in 2..4 loop if v_ratio[k] > v_ratio[v_strong] then v_strong := k; end if; end loop;
+  -- weakest of the others
+  for k in 1..4 loop
+    if k <> v_strong and (v_low is null or v_ratio[k] < v_ratio[v_low]) then v_low := k; end if;
+  end loop;
+  -- weather levels: the ONLY place thresholds live. Highest min_total that the total reaches wins.
+  -- To add a level later, add one row: (min_total, key, label, emoji).
+  select lv.key, lv.label, lv.emoji into w
+    from (values (34, 'sunny', '맑음', '☀️'),
+                 (0, 'partly', '구름 조금', '🌤️')) as lv(min_total, key, label, emoji)
+   where v_total >= lv.min_total
+   order by lv.min_total desc
+   limit 1;
+  return jsonb_build_object('round', p_round, 'status', 'ready',
+    'weather', jsonb_build_object('key', w.key, 'label', w.label, 'emoji', w.emoji),
+    'lines', jsonb_build_object('strength', v_strength[v_strong], 'grow', v_grow[v_low], 'action', v_action[v_low]));
 end
 $fn$;
 revoke all on function public.my_forecast(integer) from public, anon, authenticated;
