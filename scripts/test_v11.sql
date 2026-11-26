@@ -36,8 +36,8 @@ select pg_temp.ok('authenticated can execute the 3 v11 RPCs',
   and has_function_privilege('authenticated', 'public.request_pay_code()', 'EXECUTE')
   and has_function_privilege('authenticated', 'public.my_report()', 'EXECUTE'));
 select pg_temp.ok('anon/authenticated cannot execute set_couple_paid / paywall_on / new_pay_code',
-  not has_function_privilege('authenticated', 'private.set_couple_paid(text,boolean,text,text)', 'EXECUTE')
-  and not has_function_privilege('anon', 'private.set_couple_paid(text,boolean,text,text)', 'EXECUTE')
+  not has_function_privilege('authenticated', 'private.set_couple_paid(text,boolean,text,text,integer)', 'EXECUTE')
+  and not has_function_privilege('anon', 'private.set_couple_paid(text,boolean,text,text,integer)', 'EXECUTE')
   and not has_function_privilege('authenticated', 'private.paywall_on()', 'EXECUTE')
   and not has_function_privilege('authenticated', 'private.new_pay_code()', 'EXECUTE'));
 select pg_temp.ok('v11 functions are SECURITY DEFINER with search_path pinned',
@@ -262,16 +262,31 @@ set local role authenticated;
 select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
 select pg_temp.chat((select v from t_v where k = 'c1'), '유튜브만 보고 있어');
 select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
-select pg_temp.ok('3rd entry: conditions met (3 entries, date x2) -> first report uses 비밀방 keys right away',
-  public.my_report()->'report'->'topics' = '["contact", "date", "tone"]'::jsonb and (public.my_report()->>'posts_ready')::boolean);
+select pg_temp.ok('3rd entry written today: gate stays closed and report ignores today''s posts (before-today KST rule)',
+  public.my_report()->'report'->'topics' = '["contact", "tone"]'::jsonb and (public.my_report()->>'posts_ready')::boolean = false);
+reset role;
+select pg_temp.ok('... no snapshot from today''s posts', not exists (select 1 from private.report_snapshots));
+-- KST midnight boundary: a post at today 00:00:01 KST is "today", one at yesterday 23:59:59 KST is "before today"
+update private.secret_report_consents set consented_at = consented_at - interval '36 hours'
+  where user_id = 'b2000000-0000-0000-0000-000000000022';
+update private.secret_topic_tags set created_at = (date_trunc('day', now() at time zone 'Asia/Seoul') at time zone 'Asia/Seoul') + interval '1 second'
+  where author_user = 'b2000000-0000-0000-0000-000000000022' and created_at >= now();
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('posts at 00:00:01 KST today: gate still closed', (public.my_report()->>'posts_ready')::boolean = false);
+reset role;
+update private.secret_topic_tags set created_at = created_at - interval '2 seconds'
+  where author_user = 'b2000000-0000-0000-0000-000000000022' and created_at >= now() - interval '1 day' and created_at < now();
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('same posts at 23:59:59 KST yesterday: gate opens (flips at KST midnight)',
+  (public.my_report()->>'posts_ready')::boolean);
+select pg_temp.ok('... first report uses 비밀방 keys right away (3 entries, date x2), still opens immediately',
+  public.my_report()->'report'->'topics' = '["contact", "date", "tone"]'::jsonb and (public.my_report()->>'paid')::boolean);
 reset role;
 select pg_temp.ok('... and it is frozen for A (one snapshot row, keys only)',
   (select count(*) = 1 and bool_and(viewer_user = 'a1000000-0000-0000-0000-000000000011' and topics = '["contact", "date", "tone"]'::jsonb)
    from private.report_snapshots));
-update private.secret_topic_tags set created_at = created_at - interval '1 day'
-  where author_user = 'b2000000-0000-0000-0000-000000000022' and created_at >= now();
-update private.secret_report_consents set consented_at = consented_at - interval '1 day'
-  where user_id = 'b2000000-0000-0000-0000-000000000022';
 set local role authenticated;
 select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
 select pg_temp.ok('B has 3 consented entries: date (2) joins TOP 3, phone (1 < 2) and affection (pre-consent) do not',
@@ -337,7 +352,15 @@ reset role;
 update private.report_snapshots set made_at = now() - interval '7 days';
 set local role authenticated;
 select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
-select pg_temp.ok('weekly: snapshot 7 days old -> recomputed (tone 1+3=4, then the 2s in key order: contact, affection)',
+select pg_temp.ok('weekly: snapshot 7 days old but the new posts are from today -> recomputed without them',
+  public.my_report()->'report'->'topics' = '["contact", "date", "tone"]'::jsonb);
+reset role;
+update private.secret_topic_tags set created_at = now() - interval '1 day'
+  where author_user = 'b2000000-0000-0000-0000-000000000022' and created_at >= now();
+update private.report_snapshots set made_at = now() - interval '7 days';
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('weekly: snapshot 7 days old, posts from yesterday -> recomputed (tone 1+3=4, then the 2s in key order: contact, affection)',
   public.my_report()->'report'->'topics' = '["tone", "contact", "affection"]'::jsonb);
 reset role;
 select pg_temp.ok('... and frozen again from now', (select made_at = now() and topics = '["tone", "contact", "affection"]'::jsonb
@@ -366,6 +389,17 @@ set local role authenticated;
 select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
 select pg_temp.ok('after withdraw: A sees missions only, posts_ready false',
   public.my_report()->'report'->'topics' = '["contact", "tone"]'::jsonb and (public.my_report()->>'posts_ready')::boolean = false);
+reset role;
+-- gate rule: posts from a partner whose consent is off never count, even if keys were left behind (planted, all before today)
+insert into private.secret_topic_tags(couple_code, author_user, topic, created_at)
+  select (select v from t_v where k = 'c1'), 'b2000000-0000-0000-0000-000000000022', 'date', now() - interval '1 day' from generate_series(1, 4);
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('consent withdrawn: 4 leftover pre-today keys of B do not open the gate or reach the report',
+  (public.my_report()->>'posts_ready')::boolean = false and public.my_report()->'report'->'topics' = '["contact", "tone"]'::jsonb);
+reset role;
+delete from private.secret_topic_tags where author_user = 'b2000000-0000-0000-0000-000000000022';
+set local role authenticated;
 select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
 select pg_temp.ok('B confirms again', (public.consent_secret_report()->>'consented')::boolean);
 select pg_temp.chat((select v from t_v where k = 'c1'), '데이트 계획 맨날 나만');
@@ -422,6 +456,13 @@ select private.set_couple_paid((select v from t_v where k = 'code'), false, 'por
 select pg_temp.ok('refund P1 -> P2 alone ends in 10 days, P3 stacks -> 40 days', pg_temp.until() = now() + interval '40 days');
 select private.set_couple_paid((select v from t_v where k = 'code'), false, 'portone', 'P3');
 select pg_temp.ok('refund P3 too -> 10 days left', pg_temp.until() = now() + interval '10 days');
+-- quantity: one pass row per order item with days = 30 * qty; refund takes back that row's days only
+select private.set_couple_paid((select v from t_v where k = 'code'), true, 'portone', 'Q2', 60);
+select pg_temp.ok('qty 2 item -> one 60-day pass stacking on the 10 days left (70 days)', pg_temp.until() = now() + interval '70 days'
+  and (select count(*) = 1 and bool_and(days = 60) from private.couple_passes where ref = 'Q2'));
+select private.set_couple_paid((select v from t_v where k = 'code'), false, 'portone', 'Q2');
+select pg_temp.ok('refund of the qty 2 item takes back all its 60 days -> 10 days left', pg_temp.until() = now() + interval '10 days');
+select pg_temp.raises('days outside 1..366 rejected', 'select private.set_couple_paid((select v from t_v where k = ''code''), true, ''portone'', ''Q99'', 367)', 'bad_days');
 select private.set_couple_paid((select v from t_v where k = 'code'), true, 'portone', 'P3');
 select pg_temp.ok('re-paid P3 (same ref) comes back -> 40 days', pg_temp.until() = now() + interval '40 days'
   and (select count(*) = 1 from private.couple_passes where ref = 'P3'));
