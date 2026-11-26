@@ -44,6 +44,95 @@
     body { word-break: keep-all; overflow-wrap: break-word; }
     p, h1, h2, h3, li { text-wrap: pretty; }
     h1, h2, h3 { text-wrap: balance; }
+    /* v11.7 첫 화면 온보딩 (saibot-design spec v3). 390×844 무대를 화면에 맞춰 축소/확대 */
+    .onb{position:absolute;inset:0;z-index:40;background:#FFF9F5;overflow:hidden;line-height:normal;user-select:none;-webkit-user-select:none;cursor:pointer;
+      --c100:#FFF0EE;--c200:#FFD9D4;--c300:#FFB3AB;--c500:#FF8A80;--c700:#E0665B;--c800:#C9524A;--ink9:#2D3436;--ink5:#636E72;--ink4:#8A9599;--ink3:#B2BEC3;
+      --lc:rgba(255,138,128,.18);--ln:rgba(45,52,54,.06);--shc:0 1px 2px rgba(45,52,54,.04),0 8px 24px rgba(224,102,91,.08);--shr:0 2px 4px rgba(45,52,54,.04),0 16px 36px rgba(224,102,91,.16);
+      --eo:cubic-bezier(.22,1,.36,1);--es:cubic-bezier(.34,1.56,.64,1);--ei:cubic-bezier(.65,0,.35,1)}
+    .onb-st{position:absolute;left:50%;top:0;width:390px;height:844px;transform-origin:50% 0}
+    .onb .bgglow{position:absolute;left:50%;top:272px;width:300px;height:300px;margin-left:-150px;border-radius:50%;background:radial-gradient(circle,rgba(255,224,218,.85) 0,rgba(255,227,221,0) 62%);transition:all 700ms var(--eo)}
+    .onb .top{position:absolute;left:0;right:0;top:0;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;z-index:20}
+    .onb .dots{display:flex;gap:6px}
+    .onb .dots i{width:8px;height:8px;border-radius:4px;background:var(--c200);transition:width 360ms var(--es),background 220ms}
+    .onb .dots i.on{width:22px;background:var(--c500)}
+    .onb .skip{font-size:14px;font-weight:600;color:var(--ink5);padding:10px 4px;transition:opacity 220ms;background:none;border:0}
+    .onb .sb{position:absolute;left:50%;top:333px;width:180px;height:178px;margin-left:-90px;z-index:5;transition:transform 700ms var(--eo)}
+    .onb .sb-act{position:absolute;inset:0;transform-origin:50% 100%}
+    .onb .sb-idle{position:absolute;inset:0;animation:onbFloat 3.2s var(--ei) infinite;transform-origin:50% 90%}
+    .onb .sb-breathe{position:absolute;inset:0;animation:onbBreathe 2.4s var(--ei) infinite;transform-origin:50% 95%}
+    @keyframes onbFloat{0%,100%{transform:translateY(0) rotate(-1.2deg)}50%{transform:translateY(-7px) rotate(1.2deg)}}
+    @keyframes onbBreathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.015,.985)}}
+    .onb .L{position:absolute;inset:0;width:100%;height:100%;max-width:none;pointer-events:none}
+    .onb .wingL{transform-origin:34% 61%;animation:onbFlapL 1.6s var(--ei) infinite}
+    .onb .wingR{transform-origin:66% 61%;animation:onbFlapR 1.6s var(--ei) infinite}
+    @keyframes onbFlapL{0%,100%{transform:rotate(0)}50%{transform:rotate(9deg)}}
+    @keyframes onbFlapR{0%,100%{transform:rotate(0)}50%{transform:rotate(-9deg)}}
+    .onb .sb.fast .wingL,.onb .sb.fast .wingR{animation-duration:.42s}
+    .onb .halo{animation:onbHalo 2.4s var(--ei) infinite;transform-origin:50% 8%}
+    @keyframes onbHalo{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-5px) rotate(2deg)}}
+    .onb .heart{transform-origin:86% 30%;animation:onbBeat 1.4s var(--eo) infinite}
+    @keyframes onbBeat{0%,100%{transform:scale(1)}12%{transform:scale(1.18)}24%{transform:scale(.96)}36%{transform:scale(1.08)}}
+    .onb .fx{animation:onbTwinkle 2.2s var(--ei) infinite}
+    @keyframes onbTwinkle{0%,100%{opacity:1}50%{opacity:.35}}
+    .onb .eyes{transform-origin:56% 44%}
+    .onb .mouth{transform-origin:56.5% 46%}
+    .onb .shadow{position:absolute;left:50%;bottom:-10px;width:72px;height:10px;margin-left:-36px;border-radius:50%;background:rgba(224,102,91,.2);animation:onbShadow 3.2s var(--ei) infinite}
+    @keyframes onbShadow{0%,100%{transform:scaleX(1);opacity:.6}50%{transform:scaleX(.8);opacity:.35}}
+    .onb .burst{position:absolute;left:50%;top:40%;width:0;height:0;z-index:6}
+    .onb .burst span{position:absolute;font-size:18px;color:var(--c500);left:-8px;top:-8px;opacity:0}
+    .onb .talk{position:absolute;left:24px;right:24px;bottom:528px;top:64px;justify-content:flex-end;overflow:hidden;padding-bottom:8px;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 36px);mask-image:linear-gradient(to bottom,transparent 0,#000 36px);display:flex;flex-direction:column;align-items:center;gap:8px;z-index:4}
+    .onb .b2{position:relative;max-width:320px;background:#fff;border:1px solid var(--lc);box-shadow:var(--shc);border-radius:20px;padding:13px 17px;font-size:16px;line-height:24px;font-weight:500;letter-spacing:-.01em;color:var(--ink9);transform-origin:50% 100%;transition:transform 360ms var(--eo),opacity 360ms var(--eo)}
+    .onb .b2::before{content:"";position:absolute;left:50%;bottom:-7px;width:14px;height:14px;margin-left:-7px;background:#fff;border-right:1px solid var(--lc);border-bottom:1px solid var(--lc);transform:rotate(45deg);border-radius:0 0 3px 0}
+    .onb .b2.old{transform:scale(.94) translateY(-4px);opacity:.5}
+    .onb .b2.old::before{display:none}
+    .onb .b2.old2{transform:scale(.88) translateY(-8px);opacity:.25}
+    .onb .b2 .c{opacity:0;transition:opacity 160ms}
+    .onb .b2 .c.v{opacity:1}
+    .onb .talk.side{top:500px;bottom:auto;align-items:flex-start;justify-content:flex-start;overflow:visible;padding-top:8px;-webkit-mask-image:none;mask-image:none}
+    .onb .talk.side .b2{transform-origin:0 0}
+    .onb .talk.side .b2::before{left:30px;margin-left:0;top:-7px;bottom:auto;border:0;border-left:1px solid var(--lc);border-top:1px solid var(--lc);border-radius:3px 0 0 0}
+    .onb .therm{position:absolute;right:20px;top:72px;width:206px;height:340px;background:#fff;border-radius:24px;box-shadow:var(--shr);border:1px solid var(--lc);padding:18px 18px 16px;opacity:0;transform:translateY(24px) scale(.94);transform-origin:70% 20%;transition:all 560ms var(--es);z-index:3}
+    .onb .therm.on{opacity:1;transform:none}
+    .onb .therm .lbl{font-size:13px;font-weight:700;color:var(--c700)}
+    .onb .therm .num{margin-top:6px;font-size:44px;line-height:1;font-weight:800;letter-spacing:-.035em;font-variant-numeric:tabular-nums;color:var(--ink9)}
+    .onb .therm .num small{font-size:22px;font-weight:700;margin-left:1px}
+    .onb .therm .max{margin-top:6px;font-size:12px;font-weight:600;color:var(--ink4)}
+    .onb .tube2{position:absolute;left:28px;bottom:58px;width:20px;height:170px;border-radius:10px 10px 0 0;background:var(--c100);overflow:hidden}
+    .onb .fill2{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(to top,#FF8A80,#FFAB91);border-radius:10px 10px 0 0}
+    .onb .fill2::after{content:"";position:absolute;left:4px;top:8px;width:4px;height:50%;border-radius:2px;background:rgba(255,255,255,.45)}
+    .onb .bulb2{position:absolute;left:18px;bottom:18px;width:40px;height:40px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#FFB3AB,#FF8A80 60%,#F26D63);animation:onbPulse 2.4s var(--ei) infinite}
+    @keyframes onbPulse{0%,100%{box-shadow:0 0 0 5px rgba(255,138,128,.14)}50%{box-shadow:0 0 0 11px rgba(255,138,128,.07)}}
+    .onb .tk{position:absolute;left:56px;font-size:11px;font-weight:600;color:var(--ink3);transform:translateY(50%)}
+    .onb .tk::before{content:"";display:inline-block;width:6px;height:1.5px;background:var(--c200);vertical-align:middle;margin-right:4px}
+    .onb .areas2{position:absolute;right:18px;bottom:62px;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+    .onb .ar{height:28px;padding:0 10px;border-radius:999px;background:#FFF9F5;border:1px solid var(--ln);font-size:12.5px;font-weight:700;color:var(--ink3);display:flex;align-items:center;transition:all 300ms var(--es)}
+    .onb .ar.on{background:var(--c500);border-color:var(--c500);color:#fff;transform:scale(1.06);box-shadow:0 6px 14px rgba(255,138,128,.35)}
+    .onb .ar.done{background:var(--c100);border-color:var(--c200);color:var(--c800);transform:none;box-shadow:none}
+    .onb .hint2{position:absolute;left:18px;right:18px;bottom:14px;font-size:12px;font-weight:600;color:var(--c800);text-align:right;opacity:0;transform:translateY(4px);transition:all 300ms var(--eo)}
+    .onb .hint2.on{opacity:1;transform:none}
+    .onb .pointer{position:absolute;left:166px;top:236px;z-index:6;opacity:0;transition:opacity 300ms}
+    .onb .pointer.on{opacity:1}
+    .onb .pointer i{display:block;width:10px;height:10px;border-radius:50%;background:var(--c500);animation:onbPing 1.2s var(--eo) infinite}
+    @keyframes onbPing{0%{box-shadow:0 0 0 0 rgba(255,138,128,.55)}100%{box-shadow:0 0 0 16px rgba(255,138,128,0)}}
+    .onb .bottom{position:absolute;left:0;right:0;bottom:0;padding:0 20px 34px;z-index:10;transform:translateY(140%);transition:transform 640ms var(--es)}
+    .onb .bottom.on{transform:none}
+    .onb .kakao{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:56px;border-radius:16px;background:#FEE500;color:#191919;font-size:17px;font-weight:800;border:0;animation:onbKpulse 2s var(--ei) infinite 700ms}
+    .onb .kakao:disabled{opacity:.6}
+    @keyframes onbKpulse{0%,100%{box-shadow:0 8px 20px rgba(254,229,0,.35),0 0 0 0 rgba(254,229,0,.5)}50%{box-shadow:0 8px 20px rgba(254,229,0,.35),0 0 0 8px rgba(254,229,0,0)}}
+    .onb .privacy{margin:10px 0 2px;text-align:center;font-size:11px;line-height:16px;color:var(--ink4)}
+    .onb .inst{display:flex;width:100%;align-items:center;justify-content:center;gap:6px;height:42px;font-size:14px;font-weight:600;color:var(--ink5);background:none;border:0}
+    .onb .mchip{position:absolute;right:16px;top:84px;height:30px;padding:0 10px 0 8px;border-radius:999px;background:#fff;border:1.5px solid var(--c300);box-shadow:var(--shc);display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;color:var(--c800);opacity:0;transform:scale(.6);z-index:4;white-space:nowrap}
+    .onb .mchip svg{width:16px;height:16px}
+    .onb .plus{position:absolute;right:18px;top:18px;font-size:15px;font-weight:800;color:var(--c700);opacity:0}
+    .onb .qcard{position:absolute;left:50%;top:540px;transform:translateX(-50%) scale(.6);opacity:0;z-index:6;width:230px;padding:14px 18px 12px;border-radius:22px;background:#fff;box-shadow:var(--shr);border:1px solid var(--lc);text-align:center;transition:all 520ms var(--es)}
+    .onb .qcard.on{opacity:1;transform:translateX(-50%) scale(1)}
+    .onb .qcard .ql{font-size:13px;font-weight:700;color:var(--c700);display:flex;align-items:center;justify-content:center;gap:5px}
+    .onb .qcard .qn{margin-top:4px;font-size:40px;line-height:1.05;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--ink9)}
+    .onb .qcard .qn small{font-size:20px;font-weight:700;margin-left:1px}
+    .onb .qcard .qn.q span{color:var(--c500);animation:onbQblink 1.1s var(--ei) infinite}
+    @keyframes onbQblink{0%,100%{opacity:1}50%{opacity:.35}}
+    @media (prefers-reduced-motion:reduce){.onb .sb-idle,.onb .sb-breathe,.onb .wingL,.onb .wingR,.onb .halo,.onb .heart,.onb .fx,.onb .shadow,.onb .kakao,.onb .bulb2,.onb .pointer i,.onb .qcard .qn.q span{animation:none!important}
+      .onb *{transition:none!important}}
   </style>
   <!-- After the page <style> so utilities win over .safe-top/.safe-bottom, matching the old CDN inject order. -->
   <link rel="stylesheet" href="./app.css" />
@@ -61,15 +150,22 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v11-6";
+      const APP_VERSION = "v11-7";
 
       // v11.6 사이봇 말풍선 문구 — 전부 여기서만 바꾼다 (Product Marketer 최종 문구). 앱 어디에도 쪽수는 넣지 않는다.
       const SAIBOT_LINES = {
+        // 첫 화면 온보딩 v3 (spec-engineering.md §5 순서 그대로)
         onboarding: [
-          '안녕하세요, 저는 사이봇이에요. 두 분 사이를 따뜻하게 데우는 걸 도와요.',
-          '서운한 건 상대에게 바로 말하지 말고 저한테 털어놓으세요. 그 말은 그대로 전하지 않아요. 작은 미션으로 바꿔서 전해 드려요.',
+          '안녕하세요, 사이봇이에요. 서운한 건 연인에게 바로 말하지 말고 저한테 털어놓으세요.',
+          '그대로 전하지 않아요. 간단한 미션으로 바꿔서 연인에게 전해 드려요.',
           '먼저 둘 사이의 온도를 재 보고, 매일 미션 하나로 온도를 올려 봐요.'
         ],
+        onboardingB: [
+          '이건 사랑의 온도계예요. 최고 45도, 높을수록 따뜻한 사이예요.',
+          '성숙·수용·갈등·해결, 네 가지 온도를 재요.',
+          '매일 서로에게 오는 미션 하나씩, 함께 하면 온도가 올라가요.'
+        ],
+        onboardingC: '지금 당신의 온도는 몇 도인가요?',
         gratitude: [
           '『긍정학개론』에서는 감사하다고 해야 감사한 것이 되고, 재미있다고 해야 재밌어지고, 칭찬을 해야 칭찬거리가 된다고 해요.',
           '오늘 사소한 고마움 하나를 표현해서 사이를 더 가깝게 해 봐요.'
@@ -1152,6 +1248,304 @@
         `;
       }
 
+      // ── v11.7 첫 화면 온보딩 (spec v3). 레이어 사이봇 + 말풍선 + 온도계 + 질문 카드 → 카카오 버튼.
+      // 미션 1개 완료 시 오르는 온도 = private.temp_config.mission_step (운영 값 0.3, 다음 측정 때 반영).
+      const ONB_KEY = 'urisai_onboard_v3';
+      const MISSION_STEP_C = 0.3;
+      let onbCtl = null;
+      function onbSeen() { try { return Boolean(localStorage.getItem(ONB_KEY)); } catch (_e) { return false; } }
+      function onbMarkSeen() { try { localStorage.setItem(ONB_KEY, '1'); } catch (_e) {} }
+      function onbHtml() {
+        const L = (n, cls) => `<img class="L ${cls || ''}" data-onb-l="${n}" src="./saibot/${n}.png" alt="" draggable="false" />`;
+        const areas = ['gratitude', 'okay', 'open', 'resp'].map((k) => `<span class="ar" data-onb-area="${k}">${esc(AREA_NAMES[k])}</span>`).join('');
+        return `
+          <div class="onb-st" data-onb="st">
+            <div class="bgglow" data-onb="glow"></div>
+            <div class="top"><div class="dots" data-onb="dots"><i class="on"></i><i></i><i></i></div><button type="button" class="skip" data-onb="skip">건너뛰기</button></div>
+            <div class="sb" data-onb="sb"><div class="sb-act" data-onb="act" style="opacity:0">
+              <div class="shadow"></div>
+              <div class="sb-idle"><div class="sb-breathe" data-onb="breathe">
+                ${L('wingL', 'wingL')}${L('wingR', 'wingR')}${L('body')}${L('eyes', 'eyes')}${L('mouth', 'mouth')}${L('halo', 'halo')}${L('heart', 'heart')}${L('fx', 'fx')}
+              </div></div>
+            </div><div class="burst" data-onb="burst"></div></div>
+            <div class="pointer" data-onb="pointer"><i></i></div>
+            <div class="therm" data-onb="therm">
+              <div class="lbl">사랑의 온도계</div>
+              <div class="num"><span data-onb="tnum">30.0</span><small>°C</small></div>
+              <div class="max">최고 45°C</div>
+              <div class="tube2"><div class="fill2" data-onb="fill"></div></div><div class="bulb2"></div>
+              <span class="tk" style="bottom:58px">30</span><span class="tk" style="bottom:115px">35</span><span class="tk" style="bottom:171px">40</span><span class="tk" style="bottom:228px">45</span>
+              <div class="areas2">${areas}</div>
+              <div class="hint2" data-onb="hint">${esc(AREA_HINTS.open)}</div>
+              <div class="mchip" data-onb="mchip"><svg viewBox="0 0 24 24" fill="none" stroke="#FF8A80" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></svg>미션 완료</div>
+              <div class="plus" data-onb="plus">+${MISSION_STEP_C.toFixed(1)}°C</div>
+            </div>
+            <div class="talk" data-onb="talk"></div>
+            <div class="qcard" data-onb="qcard"><div class="ql"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF8A80" stroke-width="2" stroke-linecap="round"><path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0z"/><path d="M12 9v6"/></svg>사랑의 온도</div><div class="qn q" data-onb="qn"><span>??.?</span><small>°C</small></div></div>
+            <div class="bottom" data-onb="bottom">
+              <button type="button" class="kakao" data-action="kakao-login"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="#191919" d="M12 3C6.48 3 2 6.58 2 11c0 2.85 1.86 5.35 4.66 6.77l-.95 3.48c-.08.3.26.54.52.37l4.13-2.74c.54.06 1.08.12 1.64.12 5.52 0 10-3.58 10-8S17.52 3 12 3z"/></svg><span data-onb="klabel">카카오로 시작하기</span></button>
+              <p class="privacy">카카오 닉네임과 프로필 사진만 받아요. 이메일이나 연락처는 받지 않아요.</p>
+              <button type="button" class="inst" data-action="open-install"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6" y="2.5" width="12" height="19" rx="3"/><path d="M10.5 18.5h3"/></svg>아이폰 · 안드로이드 홈 화면에 앱으로 설치하는 법</button>
+            </div>
+          </div>`;
+      }
+      function syncOnboarding() {
+        const appEl = document.getElementById('app');
+        if (!appEl || !appEl.parentElement) return;
+        let el = document.getElementById('onb');
+        if (state.phase !== 'signedOut') {
+          if (el) { if (onbCtl) onbCtl.stop(); onbCtl = null; el.remove(); }
+          return;
+        }
+        if (!el) {
+          el = document.createElement('div');
+          el.id = 'onb';
+          el.className = 'onb';
+          el.innerHTML = onbHtml();
+          appEl.parentElement.appendChild(el);
+          onbCtl = onbStart(el);
+        }
+        const k = el.querySelector('[data-action="kakao-login"]');
+        const kl = el.querySelector('[data-onb="klabel"]');
+        if (k) k.disabled = Boolean(state.busy);
+        if (kl) kl.textContent = state.busy ? '카카오로 이동 중...' : '카카오로 시작하기';
+      }
+      function onbStart(root) {
+        const $o = (n) => root.querySelector('[data-onb="' + n + '"]');
+        let RM = false;
+        try { RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_e) {}
+        const E = { out: 'cubic-bezier(.22,1,.36,1)', spring: 'cubic-bezier(.34,1.56,.64,1)', inout: 'cubic-bezier(.65,0,.35,1)' };
+        const c = { alive: true, skip: false, hurry: false, typing: false, sleeps: new Set(), timers: new Set(), ivs: [], talking: null };
+        const st = $o('st'), act = $o('act'), sb = $o('sb'), talk = $o('talk');
+        const setStage = (v) => { root.setAttribute('data-stage', v); };
+        const fit = () => {
+          const w = root.clientWidth || 390, h = root.clientHeight || 844;
+          const k = Math.min(w / 390, h / 844, 1.15);
+          st.style.transform = 'translateX(-50%) scale(' + k + ')';
+          st.style.top = Math.max(0, (h - 844 * k) / 2) + 'px';
+        };
+        fit();
+        window.addEventListener('resize', fit);
+        const tmo = (fn, ms) => { const t = setTimeout(() => { c.timers.delete(t); if (c.alive) fn(); }, ms); c.timers.add(t); return t; };
+        const sleep = (ms) => new Promise((r) => {
+          if (!c.alive || c.skip) return r();
+          const it = { r, t: null };
+          it.t = setTimeout(() => { c.sleeps.delete(it); r(); }, ms);
+          c.sleeps.add(it);
+        });
+        const wake = (ms) => { c.sleeps.forEach((it) => { clearTimeout(it.t); c.sleeps.delete(it); setTimeout(it.r, ms); }); };
+        const done = () => !c.alive || c.skip;
+        const anim = (el, kf, o) => {
+          if (RM || !el || !el.animate) {
+            if (o && o.fill === 'forwards' && el) { const last = kf[kf.length - 1]; if (last.transform !== undefined) el.style.transform = last.transform; if (last.opacity !== undefined) el.style.opacity = last.opacity; }
+            return Promise.resolve();
+          }
+          return el.animate(kf, Object.assign({ fill: 'none' }, o)).finished.catch(() => {});
+        };
+        const enter = () => { act.style.opacity = 1; return anim(act, [
+          { transform: 'translateY(0) scale(0,0)', opacity: 0, offset: 0 },
+          { transform: 'translateY(-14px) scale(.86,1.14)', opacity: 1, offset: 0.42 },
+          { transform: 'translateY(0) scale(1.14,.86)', offset: 0.62 },
+          { transform: 'translateY(-5px) scale(.96,1.05)', offset: 0.8 },
+          { transform: 'translateY(0) scale(1,1)', offset: 1 }], { duration: 1000, easing: E.out }); };
+        const blink = () => {
+          if (RM || !c.alive) return;
+          const eyes = root.querySelector('[data-onb-l="eyes"]');
+          if (eyes && eyes.animate) eyes.animate([{ transform: 'scaleY(1)' }, { transform: 'scaleY(.12)', offset: 0.45 }, { transform: 'scaleY(1)' }], { duration: 170, easing: E.inout });
+          tmo(blink, 2600 + Math.random() * 1800);
+        };
+        const talkStart = () => {
+          if (RM) return;
+          const mouth = root.querySelector('[data-onb-l="mouth"]');
+          c.talking = [
+            mouth.animate([{ transform: 'scale(1,1)' }, { transform: 'scale(1.15,1.9)' }, { transform: 'scale(1,1)' }], { duration: 220, iterations: Infinity, easing: E.inout }),
+            $o('breathe').animate([{ transform: 'translateY(0) rotate(0)' }, { transform: 'translateY(-4px) rotate(-2deg)' }, { transform: 'translateY(0) rotate(0)' }, { transform: 'translateY(-3px) rotate(2deg)' }, { transform: 'translateY(0) rotate(0)' }], { duration: 900, iterations: Infinity, easing: E.inout })];
+        };
+        const talkStop = () => { if (c.talking) { c.talking.forEach((a) => a.cancel()); c.talking = null; } };
+        const jump = () => { sb.classList.add('fast'); return anim(act, [
+          { transform: 'translateY(0) scale(1,1)' }, { transform: 'translateY(4px) scale(1.14,.84)', offset: 0.15 },
+          { transform: 'translateY(-46px) scale(.9,1.12)', offset: 0.45 }, { transform: 'translateY(0) scale(1.12,.86)', offset: 0.75 },
+          { transform: 'translateY(0) scale(1,1)' }], { duration: 760, easing: E.out }).then(() => sb.classList.remove('fast')); };
+        const burst = () => {
+          if (RM) return;
+          const b = $o('burst'); b.innerHTML = '';
+          ['♥', '✦', '♥', '✦', '♥', '✦', '♥'].forEach((sym, i) => {
+            const e = document.createElement('span'); e.textContent = sym; b.appendChild(e);
+            const r = (-160 + i * (140 / 6)) * Math.PI / 180, d = 90 + Math.random() * 20;
+            anim(e, [{ transform: 'translate(0,0) scale(.4)', opacity: 0 }, { transform: `translate(${Math.cos(r) * d * 0.5}px,${Math.sin(r) * d * 0.5}px) scale(1.15)`, opacity: 1, offset: 0.4 }, { transform: `translate(${Math.cos(r) * d}px,${Math.sin(r) * d}px) scale(.8)`, opacity: 0 }], { duration: 900, easing: E.out, fill: 'forwards' });
+          });
+        };
+        const bubble = (text) => {
+          const b = document.createElement('div');
+          b.className = 'b2';
+          b.setAttribute('data-onb-bubble', '');
+          b.innerHTML = [...text].map((ch) => `<span class="c">${ch === ' ' ? ' ' : esc(ch)}</span>`).join('');
+          talk.appendChild(b);
+          return b;
+        };
+        const say = async (text, stage) => {
+          const prev = [...talk.children];
+          await sleep(400);
+          if (!c.alive) return;
+          prev.forEach((p) => p.classList.add(p.classList.contains('old') ? 'old2' : 'old'));
+          const b = bubble(text);
+          if (stage) setStage(stage);
+          anim(b, [{ transform: 'scale(.6) translateY(12px)', opacity: 0 }, { transform: 'scale(1.04) translateY(-2px)', opacity: 1, offset: 0.6 }, { transform: 'scale(1) translateY(0)', opacity: 1 }], { duration: 380, easing: E.spring });
+          talkStart();
+          c.typing = true;
+          for (const s of b.querySelectorAll('.c')) {
+            s.classList.add('v');
+            if (!c.hurry && !c.skip && !RM && c.alive) await new Promise((r) => setTimeout(r, 22));
+          }
+          b.querySelectorAll('.c').forEach((s) => s.classList.add('v'));
+          c.typing = false; c.hurry = false;
+          talkStop();
+          await sleep(Math.min(1600, 500 + text.length * 18));
+          return b;
+        };
+        const setStep = (n) => { [...$o('dots').children].forEach((d, i) => d.classList.toggle('on', i === n)); };
+        const setTemp = (v) => { $o('tnum').textContent = v.toFixed(1); $o('fill').style.height = ((v - 30) / 15 * 170) + 'px'; };
+        const countUp = (to, ms, from) => new Promise((r) => {
+          const f0 = from === undefined ? 30 : from;
+          if (RM) { setTemp(to); return r(); }
+          const t0 = performance.now();
+          const step = (t) => {
+            let k = Math.min(1, (t - t0) / ms);
+            if (c.skip || !c.alive) k = 1;
+            setTemp(f0 + (to - f0) * (1 - Math.pow(1 - k, 3)));
+            k < 1 ? requestAnimationFrame(step) : r();
+          };
+          requestAnimationFrame(step);
+        });
+        const rollLoop = () => {
+          const q = $o('qn');
+          if (RM) return;
+          const roll = () => {
+            q.classList.remove('q'); let n = 0;
+            const iv = setInterval(() => {
+              if (!c.alive) { clearInterval(iv); return; }
+              q.innerHTML = (30 + Math.random() * 15).toFixed(1) + '<small>°C</small>';
+              if (++n > 14) { clearInterval(iv); q.classList.add('q'); q.innerHTML = '<span>??.?</span><small>°C</small>'; }
+            }, 70);
+            c.ivs.push(iv);
+          };
+          roll();
+          c.ivs.push(setInterval(roll, 3200));
+        };
+        // 탭: 지금 말풍선을 바로 완성 (쉬는 중이면 60ms 뒤 다음으로). 건너뛰기: C로.
+        root.addEventListener('click', (e) => {
+          if (e.target.closest('button')) return;
+          if (c.typing) c.hurry = true; else wake(60);
+        });
+        $o('skip').addEventListener('click', () => {
+          if (c.skip) return;
+          c.skip = true; c.hurry = true;
+          wake(0);
+        });
+        const finalC = () => {
+          talk.innerHTML = ''; talk.classList.remove('side');
+          bubble(SAIBOT_LINES.onboardingC).querySelectorAll('.c').forEach((s) => s.classList.add('v'));
+          $o('qcard').classList.add('on');
+          $o('bottom').classList.add('on');
+          setStage('C'); root.setAttribute('data-cta', '1');
+          rollLoop();
+        };
+        const goC = async () => {
+          setStep(2); setStage('C0');
+          [...talk.children].forEach((b) => anim(b, [{ opacity: getComputedStyle(b).opacity }, { opacity: 0, transform: 'translateY(-12px)' }], { duration: 300, easing: E.out, fill: 'forwards' }));
+          act.getAnimations && act.getAnimations().forEach((a) => a.cancel());
+          act.style.opacity = 1; act.style.transform = '';
+          $o('pointer').classList.remove('on');
+          const th = $o('therm');
+          th.style.transition = 'all 560ms cubic-bezier(.22,1,.36,1)'; th.style.transform = 'translate(0,-6px) scale(.86)'; th.style.opacity = '0';
+          sb.style.transform = 'translate(0,0) scale(1.05)'; $o('glow').style.transform = 'translate(0,0) scale(1.1)';
+          $o('skip').style.opacity = 0; $o('skip').style.pointerEvents = 'none';
+          onbMarkSeen();
+          // 건너뛰기로 왔으면 카카오 버튼을 바로 올린다 (2초 안에 닿게)
+          if (c.skip) { $o('bottom').classList.add('on'); root.setAttribute('data-cta', '1'); }
+          await new Promise((r) => setTimeout(r, RM ? 0 : 650));
+          if (!c.alive) return;
+          talk.innerHTML = ''; talk.classList.remove('side');
+          await jump(); burst(); await jump();
+          if (!c.alive) return;
+          c.skip = false; c.hurry = false;
+          const pq = say(SAIBOT_LINES.onboardingC, 'C');
+          await new Promise((r) => setTimeout(r, RM ? 0 : 1200));
+          if (!c.alive) return;
+          $o('qcard').classList.add('on'); rollLoop();
+          await pq;
+          if (!c.alive) return;
+          $o('bottom').classList.add('on'); root.setAttribute('data-cta', '1');
+        };
+        const story = async () => {
+          setStage('A0'); setStep(0);
+          await sleep(300); if (!c.alive) return;
+          await enter();
+          const A = SAIBOT_LINES.onboarding, B = SAIBOT_LINES.onboardingB;
+          for (let i = 0; i < A.length; i++) { if (done()) return; await say(A[i], 'A' + (i + 1)); }
+          if (done()) return;
+          // B
+          setStep(1); setStage('B0');
+          [...talk.children].forEach((b) => anim(b, [{ opacity: getComputedStyle(b).opacity, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-16px) scale(.9)' }], { duration: 320, easing: E.out, fill: 'forwards' }));
+          await sleep(300); if (done()) return;
+          talk.innerHTML = '';
+          sb.style.transform = 'translate(-112px,-201px) scale(.72)'; $o('glow').style.transform = 'translate(-110px,-212px) scale(.8)';
+          await sleep(450); if (done()) return;
+          $o('therm').classList.add('on');
+          anim(act, [{ transform: 'rotate(0)' }, { transform: 'rotate(10deg) translateX(6px)', offset: 0.4 }, { transform: 'rotate(7deg) translateX(4px)' }], { duration: 600, easing: E.spring, fill: 'forwards' });
+          $o('pointer').classList.add('on');
+          talk.classList.add('side');
+          const cu = countUp(36.5, 1800);
+          await say(B[0], 'B1');
+          await cu; $o('pointer').classList.remove('on');
+          if (done()) return;
+          const ars = [...root.querySelectorAll('[data-onb-area]')];
+          const p2 = say(B[1], 'B2');
+          for (let i = 0; i < 4; i++) {
+            ars[i].classList.add('on'); if (i === 2) $o('hint').classList.add('on');
+            await sleep(520);
+            ars[i].classList.remove('on'); ars[i].classList.add('done');
+          }
+          await p2; if (done()) return;
+          const p3 = say(B[2], 'B3');
+          await sleep(900);
+          let cur = 36.5;
+          const mc = $o('mchip'), pl = $o('plus');
+          for (let k = 0; k < 2 && !done(); k++) {
+            anim(mc, [{ opacity: 0, transform: 'scale(.6) translateY(8px)' }, { opacity: 1, transform: 'scale(1.06) translateY(-2px)', offset: 0.5 }, { opacity: 1, transform: 'scale(1)' }], { duration: 380, easing: E.spring, fill: 'forwards' });
+            await sleep(320);
+            anim(pl, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)', offset: 0.3 }, { opacity: 1, transform: 'translateY(-6px)', offset: 0.75 }, { opacity: RM ? 1 : 0, transform: 'translateY(-14px)' }], { duration: 1100, easing: E.out, fill: 'forwards' });
+            await countUp(cur + MISSION_STEP_C, 600, cur); cur += MISSION_STEP_C;
+            root.setAttribute('data-mission-tick', String(k + 1));
+            await sleep(380);
+            if (k === 0 || !RM) anim(mc, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.8) translateY(-6px)' }], { duration: 240, easing: E.out, fill: 'forwards' });
+            await sleep(320);
+          }
+          await p3;
+        };
+        (async () => {
+          blink();
+          if (onbSeen()) {
+            act.style.opacity = 1; setStep(2);
+            $o('skip').style.opacity = 0; $o('skip').style.pointerEvents = 'none';
+            finalC();
+            return;
+          }
+          await story();
+          if (!c.alive) return;
+          await goC();
+        })();
+        return {
+          stop() {
+            c.alive = false;
+            window.removeEventListener('resize', fit);
+            c.timers.forEach(clearTimeout); c.ivs.forEach(clearInterval);
+            c.sleeps.forEach((it) => { clearTimeout(it.t); it.r(); });
+            talkStop();
+          }
+        };
+      }
+
       function renderLanding() {
         if (state.phase === 'loading') {
           return `
@@ -1163,36 +1557,8 @@
         }
 
         if (state.phase === 'signedOut') {
-          let seen = false;
-          try { seen = Boolean(localStorage.getItem('urisai_onboard_v116')); } catch (_e) {}
-          const step = Math.min(Math.max(0, state.obStep || 0), SAIBOT_LINES.onboarding.length - 1);
-          return `
-            <div class="flex-1 flex flex-col justify-between px-6 py-10 safe-top safe-bottom">
-              ${landingHeader('')}
-              ${seen ? '' : `
-              <div class="animate-pop" data-onboarding data-step="${step}">
-                <div class="relative bg-white rounded-2xl px-4 py-3.5 border border-[#FF8A80]/20 shadow-sm">
-                  <span class="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-white border-l border-t border-[#FF8A80]/20"></span>
-                  <p class="text-[14px] text-[#2D3436] leading-relaxed text-center" data-onboarding-text>${esc(SAIBOT_LINES.onboarding[step])}</p>
-                </div>
-                <div class="flex items-center justify-between mt-3 px-1">
-                  <button type="button" data-action="ob-skip" class="text-[11px] font-bold text-[#9AA5A9]">건너뛰기</button>
-                  <div class="flex gap-1.5">${SAIBOT_LINES.onboarding.map((_l, k) => `<span class="w-1.5 h-1.5 rounded-full ${k === step ? 'bg-[#FF8A80]' : 'bg-[#FF8A80]/25'}"></span>`).join('')}</div>
-                  <button type="button" data-action="ob-next" class="text-[11px] font-extrabold text-[#E0665B]">${step < SAIBOT_LINES.onboarding.length - 1 ? '다음' : '시작하기'}</button>
-                </div>
-              </div>`}
-              <div class="space-y-2.5">
-                <button type="button" data-action="kakao-login" ${state.busy ? 'disabled' : ''} class="w-full py-3.5 rounded-2xl bg-[#FEE500] hover:brightness-95 active:scale-[0.99] text-[#191919] text-sm font-extrabold shadow-[0_6px_20px_rgba(254,229,0,0.35)] transition-all flex items-center justify-center gap-2 ${state.busy ? 'opacity-60' : ''}">
-                  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#191919" d="M12 3C6.48 3 2 6.58 2 11c0 2.85 1.86 5.35 4.66 6.77l-.95 3.48c-.08.3.26.54.52.37l4.13-2.74c.54.06 1.08.12 1.64.12 5.52 0 10-3.58 10-8S17.52 3 12 3z"/></svg>
-                  ${state.busy ? '카카오로 이동 중...' : '카카오로 시작하기'}
-                </button>
-                <p class="text-[10px] text-[#9AA5A9] text-center leading-relaxed">카카오 닉네임과 프로필 사진만 받아요. 이메일이나 연락처는 받지 않아요.</p>
-                <button type="button" data-action="open-install" class="w-full py-2.5 rounded-2xl bg-white border border-[#2D3436]/10 text-xs font-bold text-[#636E72] hover:text-[#2D3436]">
-                  📱 아이폰 · 안드로이드 홈 화면에 앱으로 설치하는 법
-                </button>
-              </div>
-            </div>
-          `;
+          // 첫 화면은 #onb 오버레이(syncOnboarding)가 그린다
+          return `<div class="flex-1" data-landing-signedout></div>`;
         }
 
         // needCouple
@@ -2107,6 +2473,7 @@
           const keep = ae && ae.id && (ae.id === 'ob-code' || ae.id === 'ob-my-name') ? { id: ae.id, s: ae.selectionStart, e: ae.selectionEnd } : null;
           root.innerHTML = renderLanding() + renderModals();
           lastRenderedTab = '';
+          syncOnboarding();
           if (keep) {
             const el = document.getElementById(keep.id);
             if (el) { try { el.focus({ preventScroll: true }); el.setSelectionRange(keep.s, keep.e); } catch (_e) {} }
@@ -2114,6 +2481,7 @@
           return;
         }
 
+        syncOnboarding();
         const gratCaret = gratitudeCaret();
         const otherPending = state.missions.filter((m) => !m.accepted && (m.targetRole === 'BOTH' || m.targetRole === state.role)).length;
 
@@ -2221,11 +2589,6 @@
           if (action === 'join-back') clearInvite();
           render();
           if (state.joinMode) { const cd = document.getElementById('ob-code'); if (cd) { try { cd.focus(); } catch (_e) {} } }
-        } else if (action === 'ob-next' || action === 'ob-skip') {
-          const last = SAIBOT_LINES.onboarding.length - 1;
-          if (action === 'ob-next' && (state.obStep || 0) < last) { state.obStep = (state.obStep || 0) + 1; render(); return; }
-          try { localStorage.setItem('urisai_onboard_v116', '1'); } catch (_e) {}
-          render();
         } else if (action === 'create-couple' || action === 'join-couple') {
           if (state.busy) return;
           const myEl = document.getElementById('ob-my-name');
