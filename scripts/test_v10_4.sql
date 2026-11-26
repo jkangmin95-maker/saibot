@@ -67,6 +67,8 @@ insert into t_v values ('a1', public.send_gratitude());
 insert into t_v values ('a2', public.send_gratitude());
 reset role;
 select pg_temp.ok('A first call: first_today=true', ((select v from t_v where k = 'a1') ->> 'first_today')::boolean);
+select pg_temp.ok('A first call: streak 1', ((select v from t_v where k = 'a1') ->> 'streak')::int = 1);
+select pg_temp.ok('A second call same day: streak still 1', ((select v from t_v where k = 'a2') ->> 'streak')::int = 1);
 select pg_temp.ok('A first call: 40.0 -> 40.5 (+0.3 +0.2 bonus)', pg_temp.temp_of('T-X') = 40.5 and ((select v from t_v where k = 'a1') ->> 'warmth_temp')::numeric = 40.5);
 select pg_temp.ok('A second call same day: first_today=false, bump 0',
   not ((select v from t_v where k = 'a2') ->> 'first_today')::boolean and ((select v from t_v where k = 'a2') ->> 'bump')::numeric = 0);
@@ -97,6 +99,22 @@ reset role;
 select pg_temp.ok('A next day: allowed again (3 rows)', ((select v from t_v where k = 'a3') ->> 'first_today')::boolean
   and (select count(*) from private.gratitude_sends where couple_code = 'T-X') = 3);
 select pg_temp.ok('A next day: 3 gratitude > 2 서운함 -> +0.5 (41.3)', pg_temp.temp_of('T-X') = 41.3);
+select pg_temp.ok('A next day: streak 2 (yesterday + today)', ((select v from t_v where k = 'a3') ->> 'streak')::int = 2);
+select pg_temp.ok('B streak counts only B''s own days (1)', ((select v from t_v where k = 'b1') ->> 'streak')::int = 1);
+-- gap: A's rows become today, yesterday, and 3 days ago -> streak 2; then fill the gap -> 4
+insert into private.gratitude_sends values ('T-X', 'A', (now() at time zone 'Asia/Seoul')::date - 3);
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a1000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+insert into t_v values ('a4', public.send_gratitude());
+reset role;
+select pg_temp.ok('streak stops at a gap (2)', ((select v from t_v where k = 'a4') ->> 'streak')::int = 2 and not ((select v from t_v where k = 'a4') ->> 'first_today')::boolean);
+insert into private.gratitude_sends values ('T-X', 'A', (now() at time zone 'Asia/Seoul')::date - 2);
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a1000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+insert into t_v values ('a5', public.send_gratitude());
+reset role;
+select pg_temp.ok('gap filled -> streak 4, temp unchanged by repeat call', ((select v from t_v where k = 'a5') ->> 'streak')::int = 4 and pg_temp.temp_of('T-X') = 41.3);
+delete from private.gratitude_sends where couple_code = 'T-X' and sender_role = 'A' and sent_on < (now() at time zone 'Asia/Seoul')::date - 1;
 select pg_temp.ok('서운함 never lowers temperature (only ever increased)', pg_temp.temp_of('T-X') >= 40.0);
 
 -- 6) other couple isolated + cap 45.0 ---------------------------------------------------
@@ -109,5 +127,5 @@ select pg_temp.ok('D: capped at 45.0, bump reported 0.1', pg_temp.temp_of('T-Y')
 select pg_temp.ok('D: couple T-X untouched', pg_temp.temp_of('T-X') = 41.3 and (select count(*) from private.gratitude_sends where couple_code = 'T-X') = 3);
 select pg_temp.ok('D: row recorded under own couple only', (select count(*) from private.gratitude_sends where couple_code = 'T-Y' and sender_role = 'A') = 1);
 select pg_temp.ok('response carries no text fields',
-  (select bool_and(k in ('sent_today', 'first_today', 'bump', 'warmth_temp', 'completed_count')) from jsonb_object_keys((select v from t_v where k = 'd1')) k));
+  (select bool_and(k in ('sent_today', 'first_today', 'bump', 'warmth_temp', 'completed_count', 'streak')) from jsonb_object_keys((select v from t_v where k = 'd1')) k));
 rollback;

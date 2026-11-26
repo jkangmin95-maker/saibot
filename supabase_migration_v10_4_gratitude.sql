@@ -18,6 +18,7 @@
 --   sent in the same window (public.daily_missions rows, which are only created from 사이봇 비밀방 "신호 보내기").
 --   Only counts are used; nothing reads public.secret_emotions. 서운함 never lowers the temperature.
 -- * cap 45.0, like accept_mission.
+-- Response also carries 'streak' (consecutive KST days this person sent, ending today) for the after-send stamp.
 
 begin;
 
@@ -50,6 +51,7 @@ declare
   v_sad integer := 0;
   v_prev numeric(4,1);
   v_add numeric(3,1) := 0;
+  v_streak integer := 0;
 begin
   if v_uid is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
   select * into c from public.couples where user_a = v_uid or user_b = v_uid order by created_at limit 1 for update;
@@ -73,8 +75,16 @@ begin
       returning * into c;
   end if;
 
+  -- streak: consecutive KST days (ending today) on which this person sent gratitude. Count only.
+  select count(*) into v_streak from (
+    select sent_on, row_number() over (order by sent_on desc) as rn
+      from private.gratitude_sends
+     where couple_code = c.code and sender_role = v_role and sent_on <= v_day
+  ) t where t.sent_on = v_day - (t.rn - 1)::integer;
+
   return jsonb_build_object(
     'sent_today', true,
+    'streak', v_streak,
     'first_today', v_new = 1,
     'bump', c.warmth_temp - v_prev,
     'warmth_temp', c.warmth_temp,
