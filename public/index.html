@@ -443,7 +443,8 @@
       // ---- v11: 심층 리포트(마음 날씨) + 결제 화면 ----
       // 서버 플래그(get_paywall_config)가 켜지고 가격·아임웹 링크·열리는 시간이 모두 채워졌을 때만 보인다.
       // 꺼져 있으면 아래 함수는 모두 빈 문자열/원래 문구를 돌려줘서 기존 화면이 그대로다.
-      // 리포트 내용은 서버(my_report)가 미션 기록으로 만든 키(다정함 방식, 서운함 주제)뿐이고, 비밀방 원문은 어디에도 없다.
+      // 리포트 내용은 서버(my_report)가 만든 키(다정함 방식, 서운함 주제)뿐이다. 서운함 주제에는 미션 기록과 함께,
+      // 연인이 비밀방 안내에서 [확인했어요](consent_secret_report)를 누른 뒤에 쓴 글의 '주제 키'만 쓰인다. 비밀방 원문은 어디에도 없다.
       const SECRET_COPY = [
         ['여기 대화는 연인에게 절대 보이지 않아요', '쓴 문장은 연인에게 절대 보이지 않아요'],
         ['여기 얘기는 연인에게 보이지 않으니까 마음 편히 말해 주세요.', '쓴 문장은 연인에게 절대 보이지 않아요. 마음 편히 말해 주세요.']
@@ -470,7 +471,9 @@
         return t;
       }
 
-      function secretInfoKey() { return 'urisai_secret_info_seen_' + state.userId; }
+      // 서버에 [확인했어요]가 기록됐을 때만 저장 (실패하면 다음에 카드가 다시 뜬다)
+      function secretInfoKey() { return 'urisai_secret_consent_' + state.userId + '_' + state.coupleCode; }
+      let secretInfoAcked = false;
       function checkoutKey() { return 'urisai_checkout_opened_' + state.coupleCode; }
 
       async function refreshPaywall(force) {
@@ -602,7 +605,7 @@
 
       // 비밀방 — 첫 안내 카드 (한 번 확인하면 다시 안 뜸)
       function renderSecretInfoCard() {
-        if (!paywallOn()) return '';
+        if (!paywallOn() || secretInfoAcked) return '';
         try { if (localStorage.getItem(secretInfoKey())) return ''; } catch (_e) { return ''; }
         return `
                 <div class="animate-pop bg-white rounded-2xl p-4 border border-[#FF8A80] ring-2 ring-[#FF8A80]/15 shadow-sm space-y-3">
@@ -1901,8 +1904,13 @@
             showToast(code);
           }
         } else if (action === 'secret-info-ok') {
-          try { localStorage.setItem(secretInfoKey(), '1'); } catch (_e) {}
+          if (!paywallOn()) return;
+          secretInfoAcked = true;
           render();
+          const r = await sbFetchQuiet('rpc/consent_secret_report', { method: 'POST', body: '{}' });
+          if (r && r.consented === true) {
+            try { localStorage.setItem(secretInfoKey(), '1'); } catch (_e) {}
+          }
         } else if (action === 'secret-info-toggle') {
           state.secretInfoOpen = !state.secretInfoOpen;
           render();

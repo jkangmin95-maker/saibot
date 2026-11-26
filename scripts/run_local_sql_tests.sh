@@ -3,6 +3,8 @@
 #   schema -> v8 -> v9 -> v9.1
 #   v10: up -> up again -> test_v10 -> down -> up -> test_v10
 #   v11: up -> up again -> test_v10 + test_v11 -> down -> test_v10 -> up -> test_v10 + test_v11
+#   sai_chat probe (scripts/probe_sai_chat.sql): the Gemini request sai_chat builds with the v11 flag OFF must be
+#   byte-for-byte the v9.1 one, and v11 down must restore the exact v9.1 function source.
 # Needs a local Postgres you can reach as superuser, e.g. PGHOST=/tmp PGPORT=5432 PGUSER=postgres.
 # The pg http extension is replaced by a stub (scripts/local_supabase_stub.sql), so Gemini calls just return null.
 set -u
@@ -15,6 +17,12 @@ for f in supabase_schema.sql supabase_migration_v8_kakao.sql supabase_migration_
   sed -E 's/^create extension if not exists http with schema extensions;//' $f | $P -d $DB -v ON_ERROR_STOP=1 -f - >/dev/null 2>&1 || { echo "FAILED $f"; exit 1; }
 done
 TOTAL_FAIL=0
+probe() { $P -d $DB -f scripts/probe_sai_chat.sql 2>&1 | grep -E "^(RESULT|BODY|ATTEMPTS|SRC|ERROR)" > /tmp/probe_$1.out; }
+same() { # $1 label, $2 probe name, $3 grep pattern for compared lines
+  if [ -s /tmp/probe_$2.out ] && diff <(grep -E "$3" /tmp/probe_v91.out) <(grep -E "$3" /tmp/probe_$2.out) >/dev/null && grep -q "^BODY {" /tmp/probe_$2.out; then
+    echo "  PASS $1"; else echo "  FAIL $1"; diff <(grep -E "$3" /tmp/probe_v91.out) <(grep -E "$3" /tmp/probe_$2.out) | cut -c1-300; TOTAL_FAIL=$((TOTAL_FAIL + 1)); fi
+}
+probe v91
 run_tests() { # $1 = test file
   local n; n=$(basename "$1" .sql)
   $P -d $DB -f "$1" 2>&1 | grep -oE "(PASS|FAIL) .*|ERROR.*" > /tmp/$n.out
@@ -31,8 +39,11 @@ echo "  left after v10 down: tables=$($P -d $DB -tAc "select count(*) from pg_ta
 apply $V10.sql "v10 up after down"; run_tests scripts/test_v10.sql
 echo "== v11"
 apply $V11.sql "v11 up"; apply $V11.sql "v11 up again"; run_tests scripts/test_v10.sql; run_tests scripts/test_v11.sql
+probe v11off; same "sai_chat flag OFF: Gemini request + result identical to v9.1" v11off "^(RESULT|BODY|ATTEMPTS)"
 apply ${V11}_down.sql "v11 down"
-echo "  left after v11 down: tables=$($P -d $DB -tAc "select count(*) from pg_tables where schemaname='private' and tablename in ('paywall_config','couple_entitlements')") functions=$($P -d $DB -tAc "select count(*) from pg_proc where proname in ('get_paywall_config','request_pay_code','my_report','paywall_on','new_pay_code','set_couple_paid')") log_event_v11_events=$($P -d $DB -tAc "select count(*) from pg_proc where proname='log_event' and prosrc like '%paywall_view%'")"
+probe v11down; same "v11 down: sai_chat source/config identical to v9.1 and same request" v11down "^(RESULT|BODY|ATTEMPTS|SRC)"
+echo "  left after v11 down: tables=$($P -d $DB -tAc "select count(*) from pg_tables where schemaname='private' and tablename in ('paywall_config','couple_entitlements','secret_report_consents','secret_topic_tags')") functions=$($P -d $DB -tAc "select count(*) from pg_proc where proname in ('get_paywall_config','request_pay_code','my_report','paywall_on','new_pay_code','set_couple_paid','consent_secret_report','record_secret_topic','secret_topic')") log_event_v11_events=$($P -d $DB -tAc "select count(*) from pg_proc where proname='log_event' and prosrc like '%paywall_view%'")"
 run_tests scripts/test_v10.sql
 apply $V11.sql "v11 up after down"; run_tests scripts/test_v10.sql; run_tests scripts/test_v11.sql
+probe v11again; same "v11 up after down, flag OFF: sai_chat request identical to v9.1" v11again "^(RESULT|BODY|ATTEMPTS)"
 echo "TOTAL FAIL/ERROR = $TOTAL_FAIL"

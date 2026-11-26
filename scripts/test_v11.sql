@@ -43,10 +43,11 @@ select pg_temp.ok('anon/authenticated cannot execute set_couple_paid / paywall_o
 select pg_temp.ok('v11 functions are SECURITY DEFINER with search_path pinned',
   (select bool_and(p.prosecdef and exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'))
    from pg_proc p where p.proname in ('get_paywall_config', 'request_pay_code', 'my_report', 'log_event',
-     'paywall_on', 'new_pay_code', 'set_couple_paid')));
-select pg_temp.ok('no v11 function reads secret_emotions or uses EXECUTE',
+     'paywall_on', 'new_pay_code', 'set_couple_paid', 'consent_secret_report', 'record_secret_topic', 'secret_topic', 'sai_chat')));
+select pg_temp.ok('no v11 function (incl. sai_chat) reads secret_emotions or uses EXECUTE',
   not exists (select 1 from pg_proc where proname in ('get_paywall_config', 'request_pay_code', 'my_report', 'log_event',
-    'paywall_on', 'new_pay_code', 'set_couple_paid') and (prosrc ilike '%secret_emotions%' or prosrc ~* '\mexecute\M')));
+    'paywall_on', 'new_pay_code', 'set_couple_paid', 'consent_secret_report', 'record_secret_topic', 'secret_topic', 'sai_chat')
+    and (prosrc ilike '%secret_emotions%' or prosrc ~* '\mexecute\M')));
 
 -- 2) flag defaults to OFF ---------------------------------------------------------------
 select pg_temp.ok('config row exists, enabled=false, price/link/eta null',
@@ -153,6 +154,149 @@ select pg_temp.ok('unknown event rejected', not public.log_event('paywall_hack')
 reset role;
 select pg_temp.ok('paywall events stored with couple_code', (select count(*) = 7 from private.funnel_events
   where couple_code = (select v from t_v where k = 'c1') and (event like 'pay%' or event like 'report%')));
+
+
+-- 4) 속마음 리포트: consent, write-time topic keys, thresholds, no raw text ----------------------
+-- Gemini stand-in: record the request body, answer 500 (rolled back with everything else; fake key)
+insert into vault.secrets(name, secret) values ('urisai_gemini_api_key', 'local-fake-key');
+create temp table t_http(n serial, body text);
+grant all on t_http to anon, authenticated;
+grant usage, select on sequence t_http_n_seq to anon, authenticated;
+create or replace function extensions.http(r extensions.http_request) returns extensions.http_response language plpgsql as $$
+begin insert into pg_temp.t_http(body) values (r.content); return (500, 'application/json', null, '{}')::extensions.http_response; end $$;
+create or replace function pg_temp.chat(p_code text, p_text text) returns jsonb language sql as $$
+  select public.sai_chat(p_code, jsonb_build_array(jsonb_build_object('role', 'user', 'text', p_text))) $$;
+create or replace function pg_temp.last_sys() returns text language sql as $$
+  select body::jsonb #>> '{systemInstruction,parts,0,text}' from pg_temp.t_http order by n desc limit 1 $$;
+create or replace function pg_temp.tags(p_uid text) returns integer language sql as $$
+  select count(*)::integer from private.secret_topic_tags where author_user = p_uid::uuid $$;
+grant execute on all functions in schema pg_temp to anon, authenticated;
+
+select pg_temp.ok('v11 secret tables: no grants, RLS on, no policies',
+  not exists (select 1 from information_schema.role_table_grants where table_schema = 'private'
+              and table_name in ('secret_report_consents', 'secret_topic_tags') and grantee in ('anon', 'authenticated', 'PUBLIC'))
+  and (select bool_and(relrowsecurity) from pg_class where oid in ('private.secret_report_consents'::regclass, 'private.secret_topic_tags'::regclass))
+  and not exists (select 1 from pg_policies where schemaname = 'private' and tablename in ('secret_report_consents', 'secret_topic_tags')));
+select pg_temp.ok('secret_topic_tags has no text column (only id, couple_code, author_user, topic, created_at)',
+  (select array_agg(column_name::text order by column_name::text) from information_schema.columns
+   where table_schema = 'private' and table_name = 'secret_topic_tags') = array['author_user', 'couple_code', 'created_at', 'id', 'topic']);
+select pg_temp.ok('consent_secret_report: authenticated only; record_secret_topic / secret_topic not callable by API roles',
+  has_function_privilege('authenticated', 'public.consent_secret_report()', 'EXECUTE')
+  and not has_function_privilege('anon', 'public.consent_secret_report()', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'private.record_secret_topic(text,text)', 'EXECUTE')
+  and not has_function_privilege('anon', 'private.record_secret_topic(text,text)', 'EXECUTE')
+  and not has_function_privilege('authenticated', 'private.secret_topic(text)', 'EXECUTE'));
+select pg_temp.ok('sai_chat still SECURITY DEFINER, same search_path, authenticated only',
+  (select prosecdef and proconfig @> array['search_path=public, vault, extensions'] from pg_proc where proname = 'sai_chat')
+  and has_function_privilege('authenticated', 'public.sai_chat(text,jsonb)', 'EXECUTE')
+  and not has_function_privilege('anon', 'public.sai_chat(text,jsonb)', 'EXECUTE'));
+select pg_temp.ok('keyword mapping: one fixed key per message, else other',
+  private.secret_topic('답장이 늦어서 서운해') = 'contact' and private.secret_topic('주말 데이트 계획은 맨날 나만 짜') = 'date'
+  and private.secret_topic('유튜브만 봐') = 'phone' and private.secret_topic('말투가 차가워') = 'tone'
+  and private.secret_topic('오늘 날씨 좋다') = 'other' and private.secret_topic(null) = 'other');
+
+-- flag ON, B has NOT confirmed yet: B's messages leave nothing
+set local role authenticated;
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.chat((select v from t_v where k = 'c1'), '주말 데이트 계획 PRECONSENT_MARKER 매번 나만 짜');
+select pg_temp.chat((select v from t_v where k = 'c1'), '데이트 코스도 맨날 나만 찾아');
+select pg_temp.chat((select v from t_v where k = 'c1'), '약속도 맨날 내가 잡아');
+select pg_temp.ok('flag ON: sai_chat system text = new sentence + consent/topic note, old sentence gone',
+  (select position('여기 쓴 문장은 연인에게 절대 보이지 않아.' in s) > 0 and position('[확인했어요]를 누른 뒤에 쓴 글은' in s) > 0
+     and position('주제' in s) > 0 and position('이 비밀방 대화는' in s) = 0 from (select pg_temp.last_sys() s) x));
+reset role;
+select pg_temp.ok('before [확인했어요]: no topic rows for B', pg_temp.tags('b2000000-0000-0000-0000-000000000022') = 0);
+
+-- consent while the flag is OFF is ignored, and messages while OFF are never used
+update private.paywall_config set enabled = false;
+set local role authenticated;
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.ok('flag OFF: consent_secret_report -> enabled false only', public.consent_secret_report() = '{"enabled": false}'::jsonb);
+reset role;
+select pg_temp.ok('flag OFF: no consent row stored', not exists (select 1 from private.secret_report_consents));
+update private.paywall_config set enabled = true;
+set local role authenticated;
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.ok('flag ON: B confirms', public.consent_secret_report() = '{"enabled": true, "consented": true}'::jsonb);
+select pg_temp.ok('B confirms again -> same answer (first time kept)', public.consent_secret_report() = '{"enabled": true, "consented": true}'::jsonb);
+reset role;
+update private.paywall_config set enabled = false;
+set local role authenticated;
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.chat((select v from t_v where k = 'c1'), '데이트 계획 FLAGOFF_MARKER 맨날 나만');
+select pg_temp.chat((select v from t_v where k = 'c1'), '주말 약속도 맨날 나만');
+select pg_temp.chat((select v from t_v where k = 'c1'), '데이트 코스 또 나만');
+select pg_temp.ok('flag OFF: sai_chat system text is the exact v9.1 sentence, no report note',
+  (select position('지금 대화하는 사람은 ''나''이고, 이 비밀방 대화는 연인에게 절대 보이지 않아.' || E'\n' || '역할:' in s) > 0
+     and position('[확인했어요]' in s) = 0 and position('리포트' in s) = 0 from (select pg_temp.last_sys() s) x));
+reset role;
+select pg_temp.ok('flag OFF: consented B messages leave nothing', pg_temp.tags('b2000000-0000-0000-0000-000000000022') = 0);
+update private.paywall_config set enabled = true;
+select pg_temp.ok('one consent row (B, c1), nothing for A', (select count(*) = 1 and bool_and(user_id = 'b2000000-0000-0000-0000-000000000022')
+  from private.secret_report_consents));
+
+-- rows that pre-date B's consent (planted by admin) must never be used
+insert into private.secret_topic_tags(couple_code, author_user, topic, created_at)
+  select (select v from t_v where k = 'c1'), 'b2000000-0000-0000-0000-000000000022', 'affection', now() - interval '1 day' from generate_series(1, 5);
+
+-- flag ON + consented: B writes 2 date messages -> still below the 3-entry minimum
+set local role authenticated;
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.chat((select v from t_v where k = 'c1'), '주말 데이트 계획 SECRET_CHAT_MARKER 매번 나만 짜서 서운해');
+select pg_temp.chat((select v from t_v where k = 'c1'), '데이트 코스도 맨날 나만 찾아');
+reset role;
+select pg_temp.ok('after consent: B messages stored as keys (2 date)', (select count(*) = 2 and bool_and(topic = 'date')
+  from private.secret_topic_tags where author_user = 'b2000000-0000-0000-0000-000000000022' and created_at >= now()));
+select pg_temp.ok('no raw text stored anywhere in the topic table',
+  not exists (select 1 from private.secret_topic_tags t where row_to_json(t)::text ~ 'MARKER|데이트|서운'));
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('A paid, B has 2 consented entries (< 3): topics are missions only, pre-consent affection ignored',
+  public.my_report()->'report'->'topics' = '["contact", "tone"]'::jsonb);
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.chat((select v from t_v where k = 'c1'), '유튜브만 보고 있어');
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('B has 3 consented entries: date (2) joins TOP 3, phone (1 < 2) and affection (pre-consent) do not',
+  public.my_report()->'report'->'topics' = '["contact", "date", "tone"]'::jsonb);
+select pg_temp.ok('A report: keys only, no counts, no raw text, no markers',
+  (select position('MARKER' in t) = 0 and position('유튜브' in t) = 0 and position('서운해' in t) = 0 and position('"n"' in t) = 0
+     and jsonb_typeof(r->'report'->'topics'->0) = 'string' from (select public.my_report() r, public.my_report()::text t) x));
+select pg_temp.ok('A report keys unchanged (no new fields leak)', (select array_agg(k order by k) from jsonb_object_keys(public.my_report()) k)
+  = array['enabled', 'paid', 'partner_joined', 'partner_name', 'pay_code', 'ready', 'report', 'way_key']
+  and (select array_agg(k order by k) from jsonb_object_keys(public.my_report()->'report') k) = array['mission_key', 'topics']);
+-- A's own messages count only for B's view, never for A's
+select pg_temp.ok('A confirms', (public.consent_secret_report()->>'consented')::boolean);
+select pg_temp.chat((select v from t_v where k = 'c1'), '말투가 차가워 A_MARKER');
+select pg_temp.chat((select v from t_v where k = 'c1'), '단답만 해');
+select pg_temp.chat((select v from t_v where k = 'c1'), '짜증 섞인 말투');
+select pg_temp.ok('A own tone messages do not change A view', public.my_report()->'report'->'topics' = '["contact", "date", "tone"]'::jsonb);
+-- partner can't get raw text through any path
+select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
+select pg_temp.ok('B views: my_report / consent / config contain no raw text',
+  (select position('MARKER' in t) = 0 and position('차가워' in t) = 0 and position('단답' in t) = 0
+   from (select public.my_report()::text || public.consent_secret_report()::text || public.get_paywall_config()::text t) x));
+select pg_temp.raises('B cannot read secret_topic_tags', 'select * from private.secret_topic_tags', 'permission denied');
+select pg_temp.raises('B cannot read secret_report_consents', 'select * from private.secret_report_consents', 'permission denied');
+select pg_temp.raises('B cannot call record_secret_topic', 'select private.record_secret_topic(''x'', ''y'')', 'permission denied');
+select pg_temp.raises('B cannot read secret_emotions', 'select raw_text from public.secret_emotions', 'permission denied');
+-- outsider: consent goes to own couple only; chatting with someone else's code stores nothing
+select pg_temp.as_user('c3000000-0000-0000-0000-000000000033');
+select pg_temp.ok('outsider confirms (own couple)', (public.consent_secret_report()->>'consented')::boolean);
+select pg_temp.ok('outsider sai_chat on c1 code -> null', pg_temp.chat((select v from t_v where k = 'c1'), '연락 연락 연락') is null);
+reset role;
+select pg_temp.ok('outsider: consent row is for own couple, no topic rows on c1',
+  (select couple_code = (select v from t_v where k = 'c3') from private.secret_report_consents where user_id = 'c3000000-0000-0000-0000-000000000033')
+  and not exists (select 1 from private.secret_topic_tags where author_user = 'c3000000-0000-0000-0000-000000000033'));
+select pg_temp.ok('topic rows: B 3 consented (+5 planted pre-consent), A 3; nothing from flag-off or pre-consent chats',
+  pg_temp.tags('b2000000-0000-0000-0000-000000000022') = 8 and pg_temp.tags('a1000000-0000-0000-0000-000000000011') = 3
+  and (select count(*) = 5 from private.secret_topic_tags where created_at < now()));
+-- unpaid couple: no topics at all
+select private.set_couple_paid((select v from t_v where k = 'code'), false);
+set local role authenticated;
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('unpaid again: no topics anywhere', position('topics' in public.my_report()::text) = 0);
+reset role;
+select private.set_couple_paid((select v from t_v where k = 'code'), true);
 
 -- undo + flag off again
 select pg_temp.ok('admin can undo paid', not (private.set_couple_paid((select v from t_v where k = 'code'), false)->>'report_paid')::boolean);

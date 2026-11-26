@@ -20,10 +20,23 @@
 -- * New tables in schema private, RLS on, no policies, nothing granted to anon/authenticated.
 -- * get_paywall_config / request_pay_code / my_report: authenticated only, SECURITY DEFINER, pinned search_path,
 --   couple membership from auth.uid(). set_couple_paid: not executable by anon/authenticated.
--- * The report is built only from public.daily_missions rows the caller can already read (missions the partner
---   accepted from the caller, missions the partner sent to the caller) and returns fixed keys, never mission text.
---   Nothing here reads public.secret_emotions. Before payment only one key (the partner's 다정함 방식) is returned.
--- * No dynamic SQL.
+-- * The report returns fixed keys only, never mission text and never 비밀방 text. Before payment only one key
+--   (the partner's 다정함 방식, from missions) is returned.
+-- * No dynamic SQL. Nothing here reads public.secret_emotions (the app never writes it; 비밀방 messages go to sai_chat).
+--
+-- 속마음 리포트 (비밀방 → 주제 키만)
+-- * Consent: the 비밀방 안내 카드 [확인했어요] calls public.consent_secret_report(), which stores (user, couple, now())
+--   in private.secret_report_consents. Only while the feature is ON; the first timestamp is kept.
+-- * Write time: public.sai_chat (same body as v9.1 otherwise) calls private.record_secret_topic(code, last user message).
+--   It does nothing unless the feature is ON, the caller is a member, and the caller consented for this couple.
+--   It maps the message to ONE fixed key with a keyword list (private.secret_topic: phone/contact/affection/date/tone,
+--   else 'other') and stores only (couple, author, key, time) in private.secret_topic_tags. The text is never stored.
+--   No Gemini call is added; sai_chat's Gemini request is unchanged except the one gated sentence below.
+-- * Read time (my_report, paid only): the PARTNER's tags written at/after the partner's consent. Used only when the
+--   partner has >= 3 such entries; a key counts only with >= 2 entries; 'other' never shown. Those counts are added
+--   to the mission-based counts and only the TOP 3 keys (no counts) are returned.
+-- * sai_chat system text: when the feature is OFF it is exactly the v9.1 text; when ON it says written sentences are
+--   never shown to the partner and that, after [확인했어요], only topics may go into the report.
 
 begin;
 
@@ -54,9 +67,30 @@ create table if not exists private.couple_entitlements (
   updated_at timestamptz not null default now()
 );
 
+-- 비밀방 [확인했어요] (per user per couple; first time kept)
+create table if not exists private.secret_report_consents (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  couple_code text not null references public.couples(code) on delete cascade,
+  consented_at timestamptz not null default now(),
+  primary key (user_id, couple_code)
+);
+
+-- one row per consented 비밀방 message while the feature is ON: a fixed key only, never the text
+create table if not exists private.secret_topic_tags (
+  id bigint generated always as identity primary key,
+  couple_code text not null references public.couples(code) on delete cascade,
+  author_user uuid not null references auth.users(id) on delete cascade,
+  topic text not null check (topic in ('phone', 'contact', 'affection', 'date', 'tone', 'other')),
+  created_at timestamptz not null default now()
+);
+create index if not exists secret_topic_tags_author_idx on private.secret_topic_tags(couple_code, author_user, created_at);
+
 alter table private.paywall_config enable row level security;
 alter table private.couple_entitlements enable row level security;
-revoke all on private.paywall_config, private.couple_entitlements from public, anon, authenticated;
+alter table private.secret_report_consents enable row level security;
+alter table private.secret_topic_tags enable row level security;
+revoke all on private.paywall_config, private.couple_entitlements,
+  private.secret_report_consents, private.secret_topic_tags from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Helpers (private, not executable by API roles)
@@ -95,8 +129,46 @@ begin
   return jsonb_build_object('couple_code', e.couple_code, 'pay_code', e.pay_code, 'report_paid', e.report_paid, 'paid_at', e.paid_at);
 end $$;
 
+-- 비밀방 message -> one fixed key (same keyword lists as the mission topics in my_report). Most keyword hits wins,
+-- ties go to the list order; no hit -> 'other'.
+create or replace function private.secret_topic(p_text text)
+returns text language sql immutable security definer set search_path = pg_catalog, pg_temp as $$
+  select coalesce((
+    select w.k from (values
+        ('phone', 1, '폰|스마트폰|핸드폰|휴대폰|유튜브|인스타|릴스|게임|화면|만 보|만봐'),
+        ('contact', 2, '연락|답장|읽씹|카톡|톡|전화|바빠|바쁘|바쁨|무소식|기다리'),
+        ('affection', 3, '표현|사랑|좋아|예쁘|애정|스킨십|안아|고마|관심|무심|외로'),
+        ('date', 4, '데이트|코스|계획|약속|주말|식당|카페|매번 나만|맨날 나만'),
+        ('tone', 5, '말투|짜증|화내|차가|무뚝뚝|단답|퉁명|상처|예민')) as w(k, ord, re)
+    where regexp_count(lower(coalesce(p_text, '')), w.re) > 0
+    order by regexp_count(lower(coalesce(p_text, '')), w.re) desc, w.ord
+    limit 1), 'other');
+$$;
+
+-- called by sai_chat with the caller's newest message. Stores a key only. Never raises.
+create or replace function private.record_secret_topic(p_code text, p_text text)
+returns void language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare v_uid uuid := auth.uid(); v_n integer;
+begin
+  if v_uid is null or p_code is null or p_text is null or length(btrim(p_text)) = 0 then return; end if;
+  if (private.paywall_on()).id is null then return; end if;
+  if not coalesce(public.is_couple_member(p_code), false) then return; end if;
+  if not exists (select 1 from private.secret_report_consents s
+                 where s.user_id = v_uid and s.couple_code = p_code and s.consented_at <= now()) then
+    return;
+  end if;
+  select count(*) into v_n from private.secret_topic_tags t
+    where t.author_user = v_uid and t.created_at > now() - interval '1 day';
+  if v_n >= 60 then return; end if;
+  insert into private.secret_topic_tags(couple_code, author_user, topic)
+    values (p_code, v_uid, private.secret_topic(p_text));
+exception when others then
+  return;
+end $$;
+
 revoke all on function private.paywall_on(), private.new_pay_code(),
-  private.set_couple_paid(text, boolean, text, text) from public, anon, authenticated;
+  private.set_couple_paid(text, boolean, text, text), private.secret_topic(text),
+  private.record_secret_topic(text, text) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- RPCs (authenticated only)
@@ -138,15 +210,33 @@ begin
   return jsonb_build_object('pay_code', e.pay_code, 'paid', e.report_paid);
 end $$;
 
+-- consent_secret_report(): 비밀방 안내 카드 [확인했어요]. Only while the feature is ON. Keeps the first time.
+create or replace function public.consent_secret_report()
+returns jsonb language plpgsql volatile security definer set search_path = public, pg_temp as $$
+declare c public.couples;
+begin
+  if auth.uid() is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
+  if (private.paywall_on()).id is null then return jsonb_build_object('enabled', false); end if;
+  select * into c from public.couples where user_a = auth.uid() or user_b = auth.uid() limit 1;
+  if not found or not coalesce(public.is_couple_member(c.code), false) then
+    raise exception 'not_in_couple' using errcode = 'P0002';
+  end if;
+  insert into private.secret_report_consents(user_id, couple_code) values (auth.uid(), c.code)
+    on conflict (user_id, couple_code) do nothing;
+  return jsonb_build_object('enabled', true, 'consented', true);
+end $$;
+
 -- my_report(): the caller's view of the partner's 마음 날씨.
 -- {"enabled": false} when the flag is off. Keys only (client maps them to fixed copy):
 --   way_key   : partner's 다정함 방식 from missions the partner accepted (penguin/parrot/squirrel/bear/rabbit; same words as 우리 조합)
---   topics    : TOP 3 서운함 주제 from missions the partner sent to the caller (phone/contact/affection/date/tone) — paid only
+--   topics    : TOP 3 서운함 주제 (phone/contact/affection/date/tone), no counts — paid only. Score per key =
+--               missions the partner sent to the caller + the partner's consented 비밀방 keys (only when the partner has
+--               >= 3 consented entries, and only keys with >= 2 entries; 'other' never counted)
 --   mission_key: top topic or 'default' (client shows its built-in mission ideas for that key) — paid only
 create or replace function public.my_report()
 returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare c public.couples; e private.couple_entitlements; v_me text; v_partner text;
-  v_total integer; v_way text; v_topics jsonb; v_ready boolean;
+  v_total integer; v_way text; v_topics jsonb; v_ready boolean; v_partner_uid uuid; v_secret_n integer;
 begin
   if auth.uid() is null then return null; end if;
   if (private.paywall_on()).id is null then return jsonb_build_object('enabled', false); end if;
@@ -175,16 +265,33 @@ begin
   v_ready := v_total >= 3 and v_way is not null;
 
   if v_ready and coalesce(e.report_paid, false) then
+    v_partner_uid := case when v_me = 'A' then c.user_b else c.user_a end;
+    -- the partner's 비밀방 entries written at/after the partner's own [확인했어요] for this couple
+    select count(*) into v_secret_n from private.secret_topic_tags t
+      join private.secret_report_consents s on s.user_id = t.author_user and s.couple_code = t.couple_code
+      where t.couple_code = c.code and t.author_user = v_partner_uid and t.created_at >= s.consented_at;
+
     select coalesce(jsonb_agg(t.k order by t.n desc, t.ord), '[]'::jsonb) into v_topics from (
-      select w.k, w.ord, count(*) n from (values
-          ('phone', 1, '폰|스마트폰|핸드폰|휴대폰|유튜브|인스타|릴스|게임|화면|만 보|만봐'),
-          ('contact', 2, '연락|답장|읽씹|카톡|톡|전화|바빠|바쁘|바쁨|무소식|기다리'),
-          ('affection', 3, '표현|사랑|좋아|예쁘|애정|스킨십|안아|고마|관심|무심|외로'),
-          ('date', 4, '데이트|코스|계획|약속|주말|식당|카페|매번 나만|맨날 나만'),
-          ('tone', 5, '말투|짜증|화내|차가|무뚝뚝|단답|퉁명|상처|예민')) as w(k, ord, re)
-        join public.daily_missions d on d.couple_code = c.code and d.target_role = v_me
-          and lower(d.title || ' ' || d.message) ~ w.re
-        group by w.k, w.ord order by count(*) desc, w.ord limit 3) t;
+      select x.k, x.ord, sum(x.n) n from (
+        select w.k, w.ord, count(*) n from (values
+            ('phone', 1, '폰|스마트폰|핸드폰|휴대폰|유튜브|인스타|릴스|게임|화면|만 보|만봐'),
+            ('contact', 2, '연락|답장|읽씹|카톡|톡|전화|바빠|바쁘|바쁨|무소식|기다리'),
+            ('affection', 3, '표현|사랑|좋아|예쁘|애정|스킨십|안아|고마|관심|무심|외로'),
+            ('date', 4, '데이트|코스|계획|약속|주말|식당|카페|매번 나만|맨날 나만'),
+            ('tone', 5, '말투|짜증|화내|차가|무뚝뚝|단답|퉁명|상처|예민')) as w(k, ord, re)
+          join public.daily_missions d on d.couple_code = c.code and d.target_role = v_me
+            and lower(d.title || ' ' || d.message) ~ w.re
+          group by w.k, w.ord
+        union all
+        select t.topic, array_position(array['phone', 'contact', 'affection', 'date', 'tone'], t.topic), count(*)
+          from private.secret_topic_tags t
+          join private.secret_report_consents s on s.user_id = t.author_user and s.couple_code = t.couple_code
+          where coalesce(v_secret_n, 0) >= 3
+            and t.couple_code = c.code and t.author_user = v_partner_uid and t.created_at >= s.consented_at
+            and t.topic <> 'other'
+          group by t.topic
+          having count(*) >= 2
+      ) x group by x.k, x.ord order by sum(x.n) desc, x.ord limit 3) t;
   end if;
 
   return jsonb_build_object(
@@ -200,8 +307,161 @@ begin
       'mission_key', coalesce(v_topics ->> 0, 'default')) end);
 end $$;
 
-revoke all on function public.get_paywall_config(), public.request_pay_code(), public.my_report() from public, anon;
-grant execute on function public.get_paywall_config(), public.request_pay_code(), public.my_report() to authenticated;
+revoke all on function public.get_paywall_config(), public.request_pay_code(), public.my_report(),
+  public.consent_secret_report() from public, anon;
+grant execute on function public.get_paywall_config(), public.request_pay_code(), public.my_report(),
+  public.consent_secret_report() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- public.sai_chat(couple_code, messages) — v11: the v9.1 body + 속마음 리포트 hooks (both gated by the paywall flag)
+-- messages: [{"role":"user"|"bot","text":"..."}...], oldest first, last one is the user's new message.
+-- Returns {"reply": text, "missions": [{"title","message"}, ...0-2]} or null (app then uses presets).
+-- ---------------------------------------------------------------------------
+create or replace function public.sai_chat(couple_code text, messages jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, vault, extensions
+set statement_timeout = '24s'
+as $fn$
+#variable_conflict use_column
+declare
+  v_code text;
+  v_count integer;
+  v_today date := (timezone('Asia/Seoul', now()))::date;
+  v_msgs jsonb;
+  v_n integer;
+  v_last text;
+  v_contents jsonb := '[]'::jsonb;
+  v_item jsonb;
+  v_role text;
+  v_text text;
+  v_prev_role text := '';
+  v_i integer := 0;
+  v_sys text;
+  v_out jsonb;
+  v_reply text;
+  v_missions jsonb := '[]'::jsonb;
+  v_m jsonb;
+  v_report_on boolean := false;
+begin
+  if couple_code is null or length(btrim(couple_code)) = 0 or length(couple_code) > 32 then
+    return null;
+  end if;
+  v_code := btrim(couple_code);
+  if auth.uid() is null or not public.is_couple_member(v_code) then
+    return null;
+  end if;
+  if messages is null or jsonb_typeof(messages) <> 'array' then
+    return null;
+  end if;
+
+  v_n := jsonb_array_length(messages);
+  if v_n = 0 then return null; end if;
+  if messages -> (v_n - 1) ->> 'role' is distinct from 'user' then return null; end if;
+  v_last := btrim(coalesce(messages -> (v_n - 1) ->> 'text', ''));
+  if length(v_last) = 0 or length(v_last) > 500 then return null; end if;
+
+  -- keep the last 10 turns
+  select coalesce(jsonb_agg(e order by ord), '[]'::jsonb) into v_msgs
+  from jsonb_array_elements(messages) with ordinality as t(e, ord)
+  where ord > greatest(v_n - 10, 0);
+
+  insert into public.sai_chat_usage as u(couple_code, day, call_count)
+  values (v_code, v_today, 1)
+  on conflict on constraint sai_chat_usage_pkey
+  do update set call_count = u.call_count + 1
+  where u.call_count < 60
+  returning u.call_count into v_count;
+  if v_count is null then
+    return null;
+  end if;
+
+  -- v11: 속마음 리포트. 기능이 켜져 있고 이 사람이 [확인했어요]를 누른 뒤일 때만, 방금 쓴 문장을
+  -- 고정 주제 키 하나로 바꿔 저장한다(문장은 저장하지 않음). 꺼져 있으면 아무것도 하지 않고, 실패해도 대화에 영향 없음.
+  perform private.record_secret_topic(v_code, v_last);
+  v_report_on := (private.paywall_on()).id is not null;
+
+  -- build Gemini contents: must start with a user turn, roles must alternate
+  for v_item in select e from jsonb_array_elements(v_msgs) as t(e) loop
+    v_i := v_i + 1;
+    v_role := case when v_item->>'role' = 'user' then 'user' else 'model' end;
+    v_text := left(btrim(coalesce(v_item->>'text', '')), 500);
+    continue when length(v_text) = 0;
+    continue when v_prev_role = '' and v_role = 'model';
+    if v_i = jsonb_array_length(v_msgs) then
+      v_text := private.couple_context(v_code) || E'\n[지금 메시지] ' || v_text;
+    end if;
+    if v_role = v_prev_role then
+      v_contents := jsonb_set(
+        v_contents,
+        array[(jsonb_array_length(v_contents) - 1)::text, 'parts', '0', 'text'],
+        to_jsonb((v_contents -> -1 #>> '{parts,0,text}') || E'\n' || v_text));
+    else
+      v_contents := v_contents || jsonb_build_array(jsonb_build_object(
+        'role', v_role, 'parts', jsonb_build_array(jsonb_build_object('text', v_text))));
+    end if;
+    v_prev_role := v_role;
+  end loop;
+  if jsonb_array_length(v_contents) = 0 then return null; end if;
+
+  v_sys :=
+    '너는 커플 관계 코칭 앱 ''우리사이''의 AI 친구 ''사이봇''이야. 지금 대화하는 사람은 ''나''이고, ' ||
+    -- v11: 속마음 리포트가 켜져 있을 때만 안내가 바뀐다. 꺼져 있으면 v9.1과 글자 하나까지 같다.
+    case when v_report_on
+      then '여기 쓴 문장은 연인에게 절대 보이지 않아. 다만 비밀방 안내에서 [확인했어요]를 누른 뒤에 쓴 글은 요즘 마음이 어느 쪽에 있는지만 주제(예: 연락 빈도, 말투 서운함)로 정리돼서 두 사람이 함께 여는 리포트에 들어갈 수 있어. 쓴 문장 그대로나 인용은 절대 들어가지 않아. 이 부분을 물어보면 이대로만 설명해.'
+      else '이 비밀방 대화는 연인에게 절대 보이지 않아.' end || E'\n' ||
+    '역할:' || E'\n' ||
+    '- 상대가 방금 한 말에 직접, 구체적으로 반응해. 상대가 쓴 단어와 상황을 짚어서 말해. 뻔한 위로 문구나 템플릿 같은 말 금지.' || E'\n' ||
+    '- 친한 언니/형처럼 따뜻하고 자연스러운 한국어. 반말 금지, 항상 부드러운 해요체(~요). 1~3문장, 짧게. 이모지는 가끔 하나 정도.' || E'\n' ||
+    '- 인사·잡담·질문이면 그에 맞게 자연스럽게 대답하고, 필요하면 오늘 연인과 있었던 일을 가볍게 물어봐.' || E'\n' ||
+    '- 서운함·아쉬움·바람이 드러나면 공감한 뒤, 연인에게 ''오늘의 미션''으로 슬쩍 보낼 다정한 행동 제안을 2개 만들어.' || E'\n' ||
+    '- 정보가 부족하면 미션 없이 한 가지만 부드럽게 되물어.' || E'\n' ||
+    '- 이전 대화 흐름을 기억하고 같은 말을 반복하지 마.' || E'\n' ||
+    '미션 규칙: 미션 message는 앱이 연인에게 보내는 오늘의 추천 문구야. 나의 서운함이 풀리도록 연인이 나에게 해 줄 행동을 제안해.' || E'\n' ||
+    '- 연인에게 직접 말하는 형식: "상대방에게 ~해 주세요", "오늘은 상대방과 ~해 보세요". 나를 가리킬 땐 이름이 아니라 ''상대방''이라고 써.' || E'\n' ||
+    '- 연인이 불만을 들었다는 사실이나 과거의 잘못(늦음, 폰, 말투 등)을 절대 언급하지 마. ''늦었으니'', ''서운'', ''화나'' 같은 말 금지. 그냥 앱이 추천하는 기분 좋은 미션처럼 보여야 해.' || E'\n' ||
+    '- 예: 늦어서 서운했다면 → "오늘은 출발할 때 상대방에게 ''지금 출발!'' 한 줄 먼저 보내 주세요."' || E'\n' ||
+    '- 오늘 바로 할 수 있는 구체적인 행동 1개를 1~2문장의 해요체로. 두 미션은 서로 다른 행동이어야 하고 최근 보낸 미션과 겹치지 마.' || E'\n' ||
+    '- title은 15자 이내.' || E'\n' ||
+    '출력: 반드시 JSON 하나만. {"reply":"나에게 하는 답","missions":[{"title":"...","message":"..."}]} 미션이 필요 없으면 "missions":[].';
+
+  v_out := private.gemini_json(jsonb_build_object(
+    'systemInstruction', jsonb_build_object('parts', jsonb_build_array(jsonb_build_object('text', v_sys))),
+    'contents', v_contents,
+    'generationConfig', jsonb_build_object(
+      'temperature', 1.0,
+      'topP', 0.95,
+      'maxOutputTokens', 800,
+      'responseMimeType', 'application/json',
+      'thinkingConfig', jsonb_build_object('thinkingLevel', 'minimal')
+    )
+  ));
+  if v_out is null then return null; end if;
+
+  v_reply := btrim(coalesce(v_out->>'reply', ''));
+  if length(v_reply) = 0 then return null; end if;
+
+  if jsonb_typeof(v_out->'missions') = 'array' then
+    for v_m in select e from jsonb_array_elements(v_out->'missions') as t(e) limit 3 loop
+      if jsonb_typeof(v_m) = 'object' and length(btrim(coalesce(v_m->>'message', ''))) > 0 then
+        v_missions := v_missions || jsonb_build_array(jsonb_build_object(
+          'title', left(coalesce(nullif(btrim(v_m->>'title'), ''), '오늘의 다정함 미션'), 40),
+          'message', left(btrim(v_m->>'message'), 300)));
+      end if;
+    end loop;
+  end if;
+
+  return jsonb_build_object('reply', left(v_reply, 600), 'missions', v_missions);
+exception when others then
+  return null;
+end;
+$fn$;
+
+comment on function public.sai_chat(text, jsonb) is
+  'v9 Saibot chat (v11: after consent, a topic key only, when the report is on). Members only. 60 calls/day per couple. Returns {reply,missions[]} or null. Key from vault.';
+revoke all on function public.sai_chat(text, jsonb) from public, anon;
+grant execute on function public.sai_chat(text, jsonb) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Funnel counters: v10 log_event + paywall / report events (same signature, same caps)
