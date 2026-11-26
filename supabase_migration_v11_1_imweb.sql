@@ -7,7 +7,8 @@
 --   It reads recent 아임웹 orders for prodNo 11, extracts the buyer's 결제 확인 코드 (UR-XXXXXX) and calls
 --   public.imweb_poll_apply(...) per order item with action 'paid' | 'revoke' | 'no_code'.
 -- * Each order item is remembered in private.imweb_order_items with its last state, so repeats are no-ops.
--- * 'paid'  -> private.set_couple_paid(code, true, 'imweb', '<orderNo>/<itemKey>'): one 30-day pass per order item
+-- * 'paid'  -> private.set_couple_paid(code, true, 'imweb', '<orderNo>/<itemKey>', 30 * qty): one pass per order item,
+--   30 days per unit of the item's quantity (qty 1..12; the 아임웹 product allows 1 per order today)
 --   (v11 private.couple_passes; buying again stacks). Unknown code -> state 'unknown_code', nothing unlocked.
 -- * 'revoke' (refund / cancel / return) -> only if THIS order item had been applied as paid: takes back that item's pass
 --   (set_couple_paid(code, false, 'imweb', ref)) and paid_until is replayed from the passes left, so other orders and
@@ -54,10 +55,12 @@ create table if not exists private.imweb_order_items (
   item_key text not null check (char_length(item_key) between 1 and 100),
   pay_code text check (pay_code is null or pay_code ~ '^UR-[A-Z0-9]{6}$'),
   state text not null check (state in ('paid', 'revoked', 'unknown_code', 'no_code')),
+  qty integer not null default 1 check (qty between 1 and 12),
   first_seen_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (order_no, item_key)
 );
+alter table private.imweb_order_items add column if not exists qty integer not null default 1 check (qty between 1 and 12);
 create index if not exists imweb_order_items_code_idx on private.imweb_order_items(pay_code) where state = 'paid';
 
 alter table private.imweb_oauth enable row level security;
@@ -118,9 +121,11 @@ begin
   return found;
 end $$;
 
--- Apply one order item. p_action: 'paid' | 'revoke' | 'no_code'. Returns one of
--- 'unlocked', 'revoked', 'recorded', 'unknown_code', 'no_code', 'unchanged', 'bad_input', 'no_lease'.
-create or replace function public.imweb_poll_apply(p_lease uuid, p_order_no bigint, p_item_key text, p_action text, p_pay_code text)
+-- Apply one order item. p_action: 'paid' | 'revoke' | 'no_code'. p_qty: the item's quantity (pass = 30 * p_qty days).
+-- Returns one of 'unlocked', 'revoked', 'recorded', 'unknown_code', 'no_code', 'unchanged', 'bad_input', 'no_lease'.
+drop function if exists public.imweb_poll_apply(uuid, bigint, text, text, text); -- pre-quantity signature
+create or replace function public.imweb_poll_apply(p_lease uuid, p_order_no bigint, p_item_key text, p_action text, p_pay_code text,
+  p_qty integer default 1)
 returns text language plpgsql volatile security definer set search_path = private, pg_temp as $$
 declare
   r private.imweb_order_items;
@@ -131,7 +136,7 @@ begin
     return 'no_lease';
   end if;
   if p_order_no is null or p_order_no <= 0 or p_item_key is null or char_length(p_item_key) not between 1 and 100
-     or p_action not in ('paid', 'revoke', 'no_code')
+     or p_action not in ('paid', 'revoke', 'no_code') or p_qty is null or p_qty not between 1 and 12
      or (v_code is not null and v_code !~ '^UR-[A-Z0-9]{6}$') then
     return 'bad_input';
   end if;
@@ -150,17 +155,17 @@ begin
 
   if p_action = 'paid' then
     if v_code is null then return 'bad_input'; end if;
-    if found and r.state = 'paid' and r.pay_code = v_code then return 'unchanged'; end if;
-    if found and r.state = 'unknown_code' and r.pay_code = v_code then return 'unchanged'; end if;
+    if found and r.state = 'paid' and r.pay_code = v_code and r.qty = p_qty then return 'unchanged'; end if;
+    if found and r.state = 'unknown_code' and r.pay_code = v_code and r.qty = p_qty then return 'unchanged'; end if;
     begin
-      perform private.set_couple_paid(v_code, true, 'imweb', v_ref);
+      perform private.set_couple_paid(v_code, true, 'imweb', v_ref, 30 * p_qty);
     exception when sqlstate 'P0002' then
-      insert into private.imweb_order_items(order_no, item_key, pay_code, state) values (p_order_no, p_item_key, v_code, 'unknown_code')
-      on conflict (order_no, item_key) do update set pay_code = excluded.pay_code, state = 'unknown_code', updated_at = now();
+      insert into private.imweb_order_items(order_no, item_key, pay_code, state, qty) values (p_order_no, p_item_key, v_code, 'unknown_code', p_qty)
+      on conflict (order_no, item_key) do update set pay_code = excluded.pay_code, state = 'unknown_code', qty = excluded.qty, updated_at = now();
       return 'unknown_code';
     end;
-    insert into private.imweb_order_items(order_no, item_key, pay_code, state) values (p_order_no, p_item_key, v_code, 'paid')
-    on conflict (order_no, item_key) do update set pay_code = excluded.pay_code, state = 'paid', updated_at = now();
+    insert into private.imweb_order_items(order_no, item_key, pay_code, state, qty) values (p_order_no, p_item_key, v_code, 'paid', p_qty)
+    on conflict (order_no, item_key) do update set pay_code = excluded.pay_code, state = 'paid', qty = excluded.qty, updated_at = now();
     return 'unlocked';
   end if;
 
@@ -194,10 +199,10 @@ begin
 end $$;
 
 revoke all on function public.imweb_poll_lease(integer), public.imweb_poll_save_tokens(uuid, text, text, text),
-  public.imweb_poll_apply(uuid, bigint, text, text, text), public.imweb_poll_finish(uuid, text)
+  public.imweb_poll_apply(uuid, bigint, text, text, text, integer), public.imweb_poll_finish(uuid, text)
   from public, anon, authenticated;
 grant execute on function public.imweb_poll_lease(integer), public.imweb_poll_save_tokens(uuid, text, text, text),
-  public.imweb_poll_apply(uuid, bigint, text, text, text), public.imweb_poll_finish(uuid, text)
+  public.imweb_poll_apply(uuid, bigint, text, text, text, integer), public.imweb_poll_finish(uuid, text)
   to service_role;
 
 commit;

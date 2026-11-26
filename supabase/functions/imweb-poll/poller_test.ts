@@ -105,8 +105,8 @@ Deno.test("happy path: applies paid/revoke/no_code, ignores others, finishes ok"
   const r = await quiet(() => createHandler(env, f)(post("s3cret")));
   assertEquals(r.status, 200);
   const applies = calls.rpc.filter((c) => c.fn === "imweb_poll_apply");
-  assertEquals(applies.map((a) => [a.p_order_no, a.p_action, a.p_pay_code]), [
-    [1001, "paid", "UR-ABC234"], [1004, "revoke", "UR-ABC234"], [1009, "no_code", null],
+  assertEquals(applies.map((a) => [a.p_order_no, a.p_action, a.p_pay_code, a.p_qty]), [
+    [1001, "paid", "UR-ABC234", 1], [1004, "revoke", "UR-ABC234", 1], [1009, "no_code", null, 1],
   ]);
   assertEquals(calls.rpc.at(-1), { fn: "imweb_poll_finish", p_lease: "L1", p_status: "ok" });
   const body = await r.json();

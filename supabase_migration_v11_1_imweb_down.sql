@@ -6,6 +6,7 @@
 -- After this down, re-running the up needs a fresh token pair from the 아임웹 app authorize flow, not the old box file.
 begin;
 drop function if exists public.imweb_poll_finish(uuid, text);
+drop function if exists public.imweb_poll_apply(uuid, bigint, text, text, text, integer);
 drop function if exists public.imweb_poll_apply(uuid, bigint, text, text, text);
 drop function if exists public.imweb_poll_save_tokens(uuid, text, text, text);
 drop function if exists public.imweb_poll_lease(integer);

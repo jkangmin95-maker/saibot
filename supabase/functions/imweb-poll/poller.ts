@@ -140,7 +140,7 @@ export function createHandler(env: Env, fetchImpl: Fetch = fetch, now: () => num
       counts.items = decisions.length;
       for (const d of decisions) {
         const res: string = await rpc("imweb_poll_apply", {
-          p_lease: leaseId, p_order_no: d.orderNo, p_item_key: d.itemKey, p_action: d.action, p_pay_code: d.payCode,
+          p_lease: leaseId, p_order_no: d.orderNo, p_item_key: d.itemKey, p_action: d.action, p_pay_code: d.payCode, p_qty: d.qty,
         });
         counts[res] = (counts[res] ?? 0) + 1;
         // order numbers only (no codes, names, phones or emails) so the owner can look the order up in 아임웹

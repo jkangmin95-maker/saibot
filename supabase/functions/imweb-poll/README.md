@@ -1,7 +1,7 @@
 # imweb-poll: 아임웹 결제 → 속마음 리포트 자동 열기
 
 Every minute pg_cron calls this function. It reads recent 아임웹 orders, finds 상품 prodNo 11 (우리사이 속마음 리포트),
-reads the buyer's **결제 확인 코드** (UR-XXXXXX) and adds or takes back one 30-day pass per order item through `public.imweb_poll_apply`
+reads the buyer's **결제 확인 코드** (UR-XXXXXX) from the product's required input option of that name (prodNo 11, optionCode O20261126d4894320f7625; the delivery memo is not read) and adds or takes back one pass per order item (30 days × the item's quantity) through `public.imweb_poll_apply`
 (→ `private.set_couple_paid(code, true|false, 'imweb', '<orderNo>/<itemKey>')`, v11 `private.couple_passes`).
 
 | Order state | Action |

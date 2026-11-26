@@ -26,7 +26,7 @@ select pg_temp.ok('poller RPCs: service_role only',
   (select bool_and(has_function_privilege('service_role', f, 'EXECUTE')
      and not has_function_privilege('anon', f, 'EXECUTE') and not has_function_privilege('authenticated', f, 'EXECUTE'))
    from unnest(array['public.imweb_poll_lease(integer)', 'public.imweb_poll_save_tokens(uuid,text,text,text)',
-     'public.imweb_poll_apply(uuid,bigint,text,text,text)', 'public.imweb_poll_finish(uuid,text)']) f));
+     'public.imweb_poll_apply(uuid,bigint,text,text,text,integer)', 'public.imweb_poll_finish(uuid,text)']) f));
 select pg_temp.ok('PUBLIC has no EXECUTE on poller RPCs', not exists (
   select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
   where p.proname like 'imweb_poll_%' and a.grantee = 0 and a.privilege_type = 'EXECUTE'));
@@ -34,7 +34,7 @@ select pg_temp.ok('imweb_seed_tokens / set_couple_paid: not executable by API ro
   not has_function_privilege('service_role', 'private.imweb_seed_tokens(text,text)', 'EXECUTE')
   and not has_function_privilege('authenticated', 'private.imweb_seed_tokens(text,text)', 'EXECUTE')
   and not has_function_privilege('anon', 'private.imweb_seed_tokens(text,text)', 'EXECUTE')
-  and not has_function_privilege('service_role', 'private.set_couple_paid(text,boolean,text,text)', 'EXECUTE'));
+  and not has_function_privilege('service_role', 'private.set_couple_paid(text,boolean,text,text,integer)', 'EXECUTE'));
 select pg_temp.ok('all v11.1 functions SECURITY DEFINER with pinned search_path',
   (select count(*) = 5 and bool_and(prosecdef and exists (select 1 from unnest(proconfig) c where c like 'search_path=%'))
    from pg_proc where proname in ('imweb_poll_lease', 'imweb_poll_save_tokens', 'imweb_poll_apply', 'imweb_poll_finish', 'imweb_seed_tokens')));
@@ -172,8 +172,34 @@ reset role;
 select pg_temp.ok('... couple 2 still paid by the manual pass (30 days)', pg_temp.paid('UR-XYZ789') and (select paid_source = 'manual'
   and paid_until = now() + interval '30 days' from private.couple_entitlements where pay_code = 'UR-XYZ789'));
 select pg_temp.ok('order log holds only order no / item / code / state', (select count(*) = 6 from private.imweb_order_items)
-  and (select array_agg(column_name::text order by ordinal_position) = array['order_no','item_key','pay_code','state','first_seen_at','updated_at']
+  and (select array_agg(column_name::text order by ordinal_position) = array['order_no','item_key','pay_code','state','qty','first_seen_at','updated_at']
        from information_schema.columns where table_schema = 'private' and table_name = 'imweb_order_items'));
+
+-- 6b) quantity: qty N -> one pass of 30*N days; revoke takes back the whole item; bad qty rejected
+reset role;
+insert into public.couples(code) values ('QTYC');
+insert into private.couple_entitlements(couple_code, pay_code) values ('QTYC', 'UR-QTY222');
+set local role service_role;
+create or replace function pg_temp.apq(p_order bigint, p_item text, p_action text, p_code text, p_qty integer) returns text language sql as $$
+  select public.imweb_poll_apply((select v::uuid from t_v where k = 'lease'), p_order, p_item, p_action, p_code, p_qty) $$;
+grant execute on function pg_temp.apq(bigint, text, text, text, integer) to service_role;
+select pg_temp.ok('qty 2 paid -> unlocked', pg_temp.apq(2001, 'OI2001', 'paid', 'UR-QTY222', 2) = 'unlocked');
+select pg_temp.ok('qty 2 again -> unchanged', pg_temp.apq(2001, 'OI2001', 'paid', 'UR-QTY222', 2) = 'unchanged');
+reset role;
+select pg_temp.ok('... one pass row, 60 days, paid_until now + 60 days', (select count(*) = 1 and bool_and(days = 60) from private.couple_passes where couple_code = 'QTYC')
+  and pg_temp.until('UR-QTY222') = now() + interval '60 days');
+set local role service_role;
+select pg_temp.ok('qty 0 / 13 / null -> bad_input', pg_temp.apq(2002, 'OI2002', 'paid', 'UR-QTY222', 0) = 'bad_input'
+  and pg_temp.apq(2002, 'OI2002', 'paid', 'UR-QTY222', 13) = 'bad_input' and pg_temp.apq(2002, 'OI2002', 'paid', 'UR-QTY222', null) = 'bad_input');
+select pg_temp.ok('revoke the qty 2 item -> revoked', pg_temp.apq(2001, 'OI2001', 'revoke', 'UR-QTY222', 2) = 'revoked');
+reset role;
+select pg_temp.ok('... all 60 days taken back (not paid, row kept with revoked_at)', not pg_temp.paid('UR-QTY222')
+  and (select count(*) = 1 and bool_and(revoked_at is not null) from private.couple_passes where couple_code = 'QTYC'));
+set local role service_role;
+select pg_temp.ok('qty 3 item on a code with 0 days -> 90 days', pg_temp.apq(2003, 'OI2003', 'paid', 'UR-QTY222', 3) = 'unlocked');
+reset role;
+select pg_temp.ok('... 90 days', pg_temp.until('UR-QTY222') = now() + interval '90 days');
+delete from public.couples where code = 'QTYC';
 
 -- 7) finish ---------------------------------------------------------------------------------------------
 set local role service_role;

@@ -7,6 +7,7 @@ export interface Decision {
   itemKey: string;
   action: PollAction;
   payCode: string | null;
+  qty: number; // item quantity; the pass is 30 * qty days (SQL accepts 1..12)
 }
 
 export const CODE_OPTION_NAME = "결제 확인 코드";
@@ -119,10 +120,12 @@ export function decideOrder(order: J, prodNo: number): Decision[] {
       if (Number(it?.productInfo?.prodNo) !== prodNo) return;
       const itemKey = String(it?.orderItemCode || it?.orderSectionItemNo || `${s?.orderSectionCode ?? si}:${ii}`).slice(0, 100);
       const payCode = extractPayCode(it?.productInfo);
+      const q = Number(it?.qty ?? 1);
+      const qty = Number.isSafeInteger(q) && q >= 1 ? q : 0;
       if (pay === "revoked" || sectionRevoked(s?.orderSectionStatus)) {
-        out.push({ orderNo, itemKey, action: "revoke", payCode });
-      } else if (pay === "paid" && Number(it?.qty ?? 1) >= 1) {
-        out.push({ orderNo, itemKey, action: payCode ? "paid" : "no_code", payCode });
+        out.push({ orderNo, itemKey, action: "revoke", payCode, qty: Math.min(Math.max(qty, 1), 12) }); // revoke takes back the whole row; qty unused
+      } else if (pay === "paid" && qty >= 1) {
+        out.push({ orderNo, itemKey, action: payCode ? "paid" : "no_code", payCode, qty });
       }
     });
   });

@@ -8,7 +8,7 @@ const P = 11;
 const one = (k: string) => decideOrder(F[k], P);
 
 Deno.test("paid order → paid with code", () => {
-  assertEquals(one("paid"), [{ orderNo: 1001, itemKey: "OI1001", action: "paid", payCode: "UR-ABC234" }]);
+  assertEquals(one("paid"), [{ orderNo: 1001, itemKey: "OI1001", action: "paid", payCode: "UR-ABC234", qty: 1 }]);
 });
 Deno.test("code is normalized (case, spaces, dashes) from optionInfoList objects", () => {
   assertEquals(one("paid_messy_code")[0].payCode, "UR-ABC234");
@@ -18,7 +18,7 @@ Deno.test("code is normalized (case, spaces, dashes) from optionInfoList objects
   assertEquals(codeFromValue("UR-ABC2345"), null);
 });
 Deno.test("fallback regex finds exactly one UR- code anywhere in the options", () => {
-  assertEquals(one("paid_fallback_regex")[0], { orderNo: 1003, itemKey: "OI1003", action: "paid", payCode: "UR-XYZ789" });
+  assertEquals(one("paid_fallback_regex")[0], { orderNo: 1003, itemKey: "OI1003", action: "paid", payCode: "UR-XYZ789", qty: 1 });
 });
 Deno.test("two different codes → no_code (ambiguous)", () => {
   assertEquals(one("ambiguous")[0].action, "no_code");
@@ -43,7 +43,7 @@ Deno.test("pending bank transfer, FREE payment, refund in flight → nothing", (
   assertEquals(one("refund_processing"), []);
 });
 Deno.test("multi-product order → only prodNo 11 item", () => {
-  assertEquals(one("multi"), [{ orderNo: 1016, itemKey: "OI1016", action: "paid", payCode: "UR-QQQ222" }]);
+  assertEquals(one("multi"), [{ orderNo: 1016, itemKey: "OI1016", action: "paid", payCode: "UR-QQQ222", qty: 1 }]);
 });
 Deno.test("duplicates across pages collapse; last copy wins", () => {
   const d = decideAll([F.paid, F.duplicate, F.wrong_product, F.paid], P);
@@ -75,4 +75,16 @@ Deno.test("each prodNo item has a stable, distinct itemKey (one 30-day pass per 
   const a = decideAll([F.paid, F.paid_messy_code, F.duplicate], P);
   assertEquals(a.map((d) => `${d.orderNo}/${d.itemKey}`), ["1001/OI1001", "1002/OI1002"]);
   assertEquals(decideOrder(F.paid, P)[0].itemKey, decideOrder(F.duplicate, P)[0].itemKey);
+});
+Deno.test("quantity: qty N → one decision with qty N; bad qty → nothing", () => {
+  const two = structuredClone(F.paid); two.sections[0].sectionItems[0].qty = 2;
+  assertEquals(decideOrder(two, P), [{ orderNo: 1001, itemKey: "OI1001", action: "paid", payCode: "UR-ABC234", qty: 2 }]);
+  const str = structuredClone(F.paid); str.sections[0].sectionItems[0].qty = "3";
+  assertEquals(decideOrder(str, P)[0].qty, 3);
+  for (const bad of [0, -1, 1.5, "x"]) {
+    const o = structuredClone(F.paid); o.sections[0].sectionItems[0].qty = bad;
+    assertEquals(decideOrder(o, P), [], String(bad));
+  }
+  const rv = structuredClone(F.refunded); rv.sections[0].sectionItems[0].qty = 2;
+  assertEquals(decideOrder(rv, P)[0].action, "revoke");
 });
