@@ -44,13 +44,17 @@ select pg_temp.ok('execute: authenticated yes, anon no, PUBLIC no',
      and not exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0))
    from pg_proc p where p.oid in ('public.my_heart_notices()'::regprocedure, 'public.send_heart(text)'::regprocedure, 'public.submit_temp(smallint[])'::regprocedure)));
 select pg_temp.ok('private.heart_candidates: no EXECUTE for anon / authenticated / PUBLIC',
-  not has_function_privilege('authenticated', 'private.heart_candidates(text, uuid)', 'EXECUTE')
-  and not has_function_privilege('anon', 'private.heart_candidates(text, uuid)', 'EXECUTE')
-  and not exists (select 1 from aclexplode((select coalesce(proacl, acldefault('f', proowner)) from pg_proc where oid = 'private.heart_candidates(text, uuid)'::regprocedure)) a where a.grantee = 0));
+  not has_function_privilege('authenticated', 'private.heart_candidates(text, uuid, uuid)', 'EXECUTE')
+  and not has_function_privilege('anon', 'private.heart_candidates(text, uuid, uuid)', 'EXECUTE')
+  and not exists (select 1 from aclexplode((select coalesce(proacl, acldefault('f', proowner)) from pg_proc where oid = 'private.heart_candidates(text, uuid, uuid)'::regprocedure)) a where a.grantee = 0));
 select pg_temp.ok('no heart function reads title/message/secret_emotions or writes couples / missions',
   not exists (select 1 from pg_proc where proname in ('my_heart_notices', 'send_heart', 'heart_candidates')
     and (prosrc ~* '\m(title|message|badge|secret_emotions)\M' or prosrc ~* 'update\s+(public|private)\.'))
 );
+select pg_temp.ok('heart_candidates never reads self_missions and requires sender_id = caller; old 2-arg version gone',
+  (select prosrc from pg_proc where oid = 'private.heart_candidates(text, uuid, uuid)'::regprocedure) !~* 'self_missions'
+  and (select prosrc from pg_proc where oid = 'private.heart_candidates(text, uuid, uuid)'::regprocedure) ~* 'm\.sender_id\s*=\s*p_caller'
+  and to_regprocedure('private.heart_candidates(text, uuid)') is null);
 
 -- ---------- fixtures ----------
 insert into auth.users(id) select pg_temp.u(n) from generate_series(1, 6) n;
@@ -58,12 +62,16 @@ insert into public.couples(code, user_a, user_b, name_a, name_b, warmth_temp, cr
   ('TH-1', pg_temp.u(1), pg_temp.u(2), '민준', '서연', 37.5, now() - interval '100 days'),
   ('TH-2', pg_temp.u(3), pg_temp.u(4), '지호', '하린', 37.5, now() - interval '100 days'),
   ('TH-3', pg_temp.u(6), null, '혼자', null, 37.5, now() - interval '100 days');
--- u1 (A of TH-1): a partner mission done today, one done 5 days ago, one not done; and a self mission done today
+-- u1 (A of TH-1): two partner missions done today, one done 5 days ago, one not done; a self mission done today;
+-- a mission sent by a FORMER partner (u5, before the re-pair) done today; a self mission u1 completes via the RPC below
 select pg_temp.dm('th-d1', 'TH-1', 'A', 2, true, now());
+select pg_temp.dm('th-d5', 'TH-1', 'A', 2, true, now());
+select pg_temp.dm('th-d6', 'TH-1', 'A', 5, true, now());
 select pg_temp.dm('th-d2', 'TH-1', 'A', 2, true, now() - interval '5 days');
 select pg_temp.dm('th-d3', 'TH-1', 'A', 2, false, null);
-insert into private.self_missions(id, couple_code, user_id, title, message, accepted, accepted_at)
-values ('th-s1', 'TH-1', pg_temp.u(1), 'SECRET-TITLE', 'SECRET-MESSAGE', true, now());
+insert into private.self_missions(id, couple_code, user_id, title, message, accepted, accepted_at, created_on)
+values ('th-s1', 'TH-1', pg_temp.u(1), 'SECRET-TITLE', 'SECRET-MESSAGE', true, now(), (now() at time zone 'Asia/Seoul')::date),
+       ('th-s2', 'TH-1', pg_temp.u(1), 'SECRET-TITLE', 'SECRET-MESSAGE', false, null, (now() at time zone 'Asia/Seoul')::date - 1);
 -- u3 (TH-2) did a mission today too
 select pg_temp.dm('th-d4', 'TH-2', 'A', 4, true, now());
 
@@ -85,10 +93,20 @@ select pg_temp.as_user(pg_temp.u(6)::text);
 select pg_temp.ok('no partner yet: notices = []', public.my_heart_notices() = '[]'::jsonb);
 
 -- ---------- the partner sees name + date only ----------
+select pg_temp.as_user(pg_temp.u(1)::text);
+select pg_temp.ok('u1 completes a self mission via accept_self_mission', (public.accept_self_mission('th-s2')->>'accepted')::boolean);
 select pg_temp.as_user(pg_temp.u(2)::text);
 insert into t_v values ('n2', public.my_heart_notices());
-select pg_temp.ok('partner sees 2 notices (today''s couple mission + today''s self mission; not the 5-day-old or undone one)',
-  jsonb_array_length((select v from t_v where k = 'n2')) = 2);
+select pg_temp.ok('partner sees exactly 2 notices = the 2 couple missions they sent, done today (no self missions, not the 5-day-old, undone or former partner''s)',
+  jsonb_array_length((select v from t_v where k = 'n2')) = 2
+  and (select array_agg(e->>'id' order by e->>'id') from jsonb_array_elements((select v from t_v where k = 'n2')) e)
+      = (select array_agg(x order by x) from unnest(array[md5('d:th-d1' || 'TH-1' || pg_temp.u(2)::text), md5('d:th-d5' || 'TH-1' || pg_temp.u(2)::text)]) x));
+select pg_temp.ok('accept_self_mission produced no notice for the partner (no s: key under any id)',
+  not exists (select 1 from jsonb_array_elements((select v from t_v where k = 'n2')) e
+    where e->>'id' in (md5('s:th-s1' || 'TH-1' || pg_temp.u(2)::text), md5('s:th-s2' || 'TH-1' || pg_temp.u(2)::text), md5('s:th-s1'), md5('s:th-s2'))));
+select pg_temp.raises('former partner''s mission cannot be hearted', format('select public.send_heart(%L)', md5('d:th-d6' || 'TH-1' || pg_temp.u(2)::text)), 'notice_not_found');
+select pg_temp.raises('self mission cannot be hearted', format('select public.send_heart(%L)', md5('s:th-s2' || 'TH-1' || pg_temp.u(2)::text)), 'notice_not_found');
+select pg_temp.raises('old id formula md5(key) rejected', format('select public.send_heart(%L)', md5('d:th-d1')), 'notice_not_found');
 select pg_temp.ok('notice keys are exactly done_on / hearted / id / name',
   (select bool_and((select array_agg(k order by k) from jsonb_object_keys(e) k) = array['done_on', 'hearted', 'id', 'name']) from jsonb_array_elements((select v from t_v where k = 'n2')) e));
 select pg_temp.ok('notice: name = doer''s nickname, done_on = today KST, hearted false',
@@ -114,7 +132,7 @@ select pg_temp.raises('other couple cannot heart TH-1 mission -> notice_not_foun
 select pg_temp.as_user(pg_temp.u(2)::text);
 select pg_temp.raises('bad id format -> notice_not_found', 'select public.send_heart(''th-d1'')', 'notice_not_found');
 select pg_temp.raises('null id -> notice_not_found', 'select public.send_heart(null)', 'notice_not_found');
-select pg_temp.raises('md5 of the 5-day-old mission -> notice_not_found', format('select public.send_heart(%L)', md5('d:th-d2')), 'notice_not_found');
+select pg_temp.raises('md5 of the 5-day-old mission -> notice_not_found', format('select public.send_heart(%L)', md5('d:th-d2' || 'TH-1' || pg_temp.u(2)::text)), 'notice_not_found');
 
 -- ---------- sending ----------
 insert into t_v values ('h1', public.send_heart((select v->0->>'id' from t_v where k = 'n2')));
@@ -126,7 +144,7 @@ select pg_temp.ok('one heart per mission (second send is a no-op)', (select coun
 select pg_temp.ok('heart row: sender = partner, doer = u1, sent_on today',
   (select bool_and(sender_id = pg_temp.u(2) and doer_id = pg_temp.u(1) and sent_on = (now() at time zone 'Asia/Seoul')::date) from private.mission_hearts where couple_code = 'TH-1'));
 select pg_temp.ok('heart changes nothing on missions / couple',
-  (select accepted from public.daily_missions where id = 'th-d1') and (select accepted from private.self_missions where id = 'th-s1')
+  (select accepted from public.daily_missions where id = 'th-d1') and (select accepted from public.daily_missions where id = 'th-d5')
   and (select warmth_temp from public.couples where code = 'TH-1') = 37.5);
 set local role authenticated;
 select pg_temp.as_user(pg_temp.u(2)::text);

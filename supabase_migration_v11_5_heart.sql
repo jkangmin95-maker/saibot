@@ -3,10 +3,11 @@
 -- Tests: scripts/test_v11_5_heart.sql (scripts/run_local_sql_tests_v11_5_heart.sh). NOT applied to prod until Security reviews it.
 --
 -- What it does
--- * When one member completes a mission ("했어요": public.daily_missions.accepted by its target, or their own
---   private.self_missions.accepted), the OTHER current member sees a notice: {id, name, done_on, hearted}. Nothing else:
+-- * When one member completes a couple mission ("했어요": public.daily_missions.accepted by its target), the member
+--   who sent it (the OTHER current member) sees a notice: {id, name, done_on, hearted}. Nothing else:
 --   never the mission id, title, message, badge, source or which kind of mission it was (비밀방 privacy).
---   id = md5 of an internal key (opaque; only meaningful to public.send_heart).
+--   Only couple missions the viewer SENT count (daily_missions.sender_id = viewer); self missions never make a notice.
+--   id = md5(mission_key || couple code || viewer id) (opaque, per viewer; only meaningful to public.send_heart).
 -- * The partner may send one heart per mission (primary key). A heart never changes completion and never lowers anything.
 -- * In public.submit_temp the heart counts as the SENDER's gratitude-day for the 고마움 area: same per-day unit as
 --   private.gratitude_senders, deduped with a gratitude send on the same KST day, same grat_step / grat_cap. Only hearts
@@ -20,7 +21,7 @@
 begin;
 
 create table if not exists private.mission_hearts (
-  mission_key text primary key,                      -- 'd:' || daily_missions.id  or  's:' || self_missions.id  (never returned)
+  mission_key text primary key,                      -- 'd:' || daily_missions.id (never returned)
   couple_code text not null references public.couples(code) on delete cascade,
   doer_id uuid not null references auth.users(id) on delete cascade,
   sender_id uuid not null references auth.users(id) on delete cascade,
@@ -32,8 +33,11 @@ create index if not exists mission_hearts_couple_sender on private.mission_heart
 alter table private.mission_hearts enable row level security;
 revoke all on private.mission_hearts from public, anon, authenticated;
 
--- internal: the partner's completed missions of today / yesterday (KST) as (key, done_on). No content columns leave here.
-create or replace function private.heart_candidates(p_code text, p_doer uuid)
+-- internal: missions the CALLER sent that the partner (p_doer) completed today / yesterday (KST), as (key, done_on).
+-- Only couple missions (public.daily_missions) with sender_id = caller: a former partner's missions never show after a
+-- re-pair, and self missions (private.self_missions, from the 비밀방 writer) are never a notice. No content columns leave here.
+drop function if exists private.heart_candidates(text, uuid);
+create or replace function private.heart_candidates(p_code text, p_doer uuid, p_caller uuid)
 returns table (mission_key text, done_on date)
 language sql
 stable
@@ -42,15 +46,11 @@ set search_path = public, pg_temp
 as $fn$
   select 'd:' || m.id, (m.accepted_at at time zone 'Asia/Seoul')::date
     from public.daily_missions m
-   where m.couple_code = p_code and m.accepted and m.accepted_at is not null and m.target_id = p_doer
+   where m.couple_code = p_code and m.accepted and m.accepted_at is not null
+     and m.target_id = p_doer and m.sender_id = p_caller
      and (m.accepted_at at time zone 'Asia/Seoul')::date >= (now() at time zone 'Asia/Seoul')::date - 1
-  union all
-  select 's:' || s.id, (s.accepted_at at time zone 'Asia/Seoul')::date
-    from private.self_missions s
-   where s.couple_code = p_code and s.accepted and s.accepted_at is not null and s.user_id = p_doer
-     and (s.accepted_at at time zone 'Asia/Seoul')::date >= (now() at time zone 'Asia/Seoul')::date - 1
 $fn$;
-revoke all on function private.heart_candidates(text, uuid) from public, anon, authenticated;
+revoke all on function private.heart_candidates(text, uuid, uuid) from public, anon, authenticated;
 
 create or replace function public.my_heart_notices()
 returns jsonb
@@ -72,10 +72,10 @@ begin
   if v_partner is null then return '[]'::jsonb; end if;
   v_name := left(coalesce(nullif(btrim(case when c.user_a = v_uid then c.name_b else c.name_a end), ''), '연인'), 20);
   return coalesce((
-    select jsonb_agg(jsonb_build_object('id', md5(x.mission_key), 'name', v_name, 'done_on', x.done_on,
+    select jsonb_agg(jsonb_build_object('id', md5(x.mission_key || c.code || v_uid::text), 'name', v_name, 'done_on', x.done_on,
                                         'hearted', h.mission_key is not null)
-                     order by x.done_on desc, md5(x.mission_key))
-      from private.heart_candidates(c.code, v_partner) x
+                     order by x.done_on desc, md5(x.mission_key || c.code || v_uid::text))
+      from private.heart_candidates(c.code, v_partner, v_uid) x
       left join private.mission_hearts h on h.mission_key = x.mission_key and h.sender_id = v_uid
   ), '[]'::jsonb);
 end
@@ -103,7 +103,8 @@ begin
   if v_partner is null or p_id is null or p_id !~ '^[0-9a-f]{32}$' then
     raise exception 'notice_not_found' using errcode = 'P0002';
   end if;
-  select x.mission_key into v_key from private.heart_candidates(c.code, v_partner) x where md5(x.mission_key) = p_id limit 1;
+  select x.mission_key into v_key from private.heart_candidates(c.code, v_partner, v_uid) x
+   where md5(x.mission_key || c.code || v_uid::text) = p_id limit 1;
   if v_key is null then raise exception 'notice_not_found' using errcode = 'P0002'; end if;
   insert into private.mission_hearts(mission_key, couple_code, doer_id, sender_id)
   values (v_key, c.code, v_partner, v_uid)

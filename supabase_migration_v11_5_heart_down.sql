@@ -3,6 +3,7 @@
 begin;
 drop function if exists public.send_heart(text);
 drop function if exists public.my_heart_notices();
+drop function if exists private.heart_candidates(text, uuid, uuid);
 drop function if exists private.heart_candidates(text, uuid);
 -- v11.3 submit_temp, verbatim (it must not reference private.mission_hearts any more)
 create or replace function public.submit_temp(p_answers smallint[])
