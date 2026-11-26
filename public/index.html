@@ -45,19 +45,19 @@
     p, h1, h2, h3, li { text-wrap: pretty; }
     h1, h2, h3 { text-wrap: balance; }
     /* v11.7 첫 화면 온보딩 (saibot-design spec v3). 390×844 무대를 화면에 맞춰 축소/확대 */
-    .onb{position:absolute;inset:0;z-index:40;background:#FFF9F5;overflow:hidden;line-height:normal;user-select:none;-webkit-user-select:none;cursor:pointer;
+    .onb{position:absolute;left:0;right:0;top:0;height:var(--app-h,100%);z-index:40;background:#FFF9F5;overflow:hidden;line-height:normal;user-select:none;-webkit-user-select:none;cursor:pointer;
       --c100:#FFF0EE;--c200:#FFD9D4;--c300:#FFB3AB;--c500:#FF8A80;--c700:#E0665B;--c800:#C9524A;--ink9:#2D3436;--ink5:#636E72;--ink4:#8A9599;--ink3:#B2BEC3;
       --lc:rgba(255,138,128,.18);--ln:rgba(45,52,54,.06);--shc:0 1px 2px rgba(45,52,54,.04),0 8px 24px rgba(224,102,91,.08);--shr:0 2px 4px rgba(45,52,54,.04),0 16px 36px rgba(224,102,91,.16);
       --eo:cubic-bezier(.22,1,.36,1);--es:cubic-bezier(.34,1.56,.64,1);--ei:cubic-bezier(.65,0,.35,1)}
     .onb-st{position:absolute;left:50%;top:0;width:390px;height:844px;transform-origin:50% 0}
-    .onb .bgglow{position:absolute;left:50%;top:272px;width:300px;height:300px;margin-left:-150px;border-radius:50%;background:radial-gradient(circle,rgba(255,224,218,.85) 0,rgba(255,227,221,0) 62%);transition:all 700ms var(--eo)}
+    .onb .bgglow{position:absolute;left:50%;top:272px;width:300px;height:300px;margin-left:-150px;border-radius:50%;background:radial-gradient(circle,rgba(255,224,218,.85) 0,rgba(255,227,221,0) 62%);transition:transform 900ms var(--eo);will-change:transform}
     .onb .top{position:absolute;left:0;right:0;top:0;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;z-index:20}
     .onb .dots{display:flex;gap:6px}
     .onb .dots i{width:8px;height:8px;border-radius:4px;background:var(--c200);transition:width 360ms var(--es),background 220ms}
     .onb .dots i.on{width:22px;background:var(--c500)}
     .onb .skip{font-size:14px;font-weight:600;color:var(--ink5);padding:10px 4px;transition:opacity 220ms;background:none;border:0}
-    .onb .sb{position:absolute;left:50%;top:333px;width:180px;height:178px;margin-left:-90px;z-index:5;transition:transform 700ms var(--eo)}
-    .onb .sb-act{position:absolute;inset:0;transform-origin:50% 100%}
+    .onb .sb{position:absolute;left:50%;top:333px;width:180px;height:178px;margin-left:-90px;z-index:5;transition:transform 900ms var(--eo);will-change:transform}
+    .onb .sb-act{position:absolute;inset:0;transform-origin:50% 100%;will-change:transform}
     .onb .sb-idle{position:absolute;inset:0;animation:onbFloat 3.2s var(--ei) infinite;transform-origin:50% 90%}
     .onb .sb-breathe{position:absolute;inset:0;animation:onbBreathe 2.4s var(--ei) infinite;transform-origin:50% 95%}
     @keyframes onbFloat{0%,100%{transform:translateY(0) rotate(-1.2deg)}50%{transform:translateY(-7px) rotate(1.2deg)}}
@@ -81,7 +81,7 @@
     .onb .burst{position:absolute;left:50%;top:40%;width:0;height:0;z-index:6}
     .onb .burst span{position:absolute;font-size:18px;color:var(--c500);left:-8px;top:-8px;opacity:0}
     .onb .talk{position:absolute;left:24px;right:24px;bottom:528px;top:64px;justify-content:flex-end;overflow:hidden;padding-bottom:8px;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 36px);mask-image:linear-gradient(to bottom,transparent 0,#000 36px);display:flex;flex-direction:column;align-items:center;gap:8px;z-index:4}
-    .onb .b2{position:relative;max-width:320px;background:#fff;border:1px solid var(--lc);box-shadow:var(--shc);border-radius:20px;padding:13px 17px;font-size:16px;line-height:24px;font-weight:500;letter-spacing:-.01em;color:var(--ink9);transform-origin:50% 100%;transition:transform 360ms var(--eo),opacity 360ms var(--eo)}
+    .onb .b2{position:relative;max-width:320px;background:#fff;border:1px solid var(--lc);box-shadow:var(--shc);border-radius:20px;padding:13px 17px;font-size:16px;line-height:24px;font-weight:500;letter-spacing:-.01em;color:var(--ink9);transform-origin:50% 100%;transition:transform 450ms var(--eo),opacity 450ms var(--eo);will-change:transform,opacity}
     .onb .b2::before{content:"";position:absolute;left:50%;bottom:-7px;width:14px;height:14px;margin-left:-7px;background:#fff;border-right:1px solid var(--lc);border-bottom:1px solid var(--lc);transform:rotate(45deg);border-radius:0 0 3px 0}
     .onb .b2.old{transform:scale(.94) translateY(-4px);opacity:.5}
     .onb .b2.old::before{display:none}
@@ -91,7 +91,7 @@
     .onb .talk.side{top:500px;bottom:auto;align-items:flex-start;justify-content:flex-start;overflow:visible;padding-top:8px;-webkit-mask-image:none;mask-image:none}
     .onb .talk.side .b2{transform-origin:0 0}
     .onb .talk.side .b2::before{left:30px;margin-left:0;top:-7px;bottom:auto;border:0;border-left:1px solid var(--lc);border-top:1px solid var(--lc);border-radius:3px 0 0 0}
-    .onb .therm{position:absolute;right:20px;top:72px;width:206px;height:340px;background:#fff;border-radius:24px;box-shadow:var(--shr);border:1px solid var(--lc);padding:18px 18px 16px;opacity:0;transform:translateY(24px) scale(.94);transform-origin:70% 20%;transition:all 560ms var(--es);z-index:3}
+    .onb .therm{position:absolute;right:20px;top:72px;width:206px;height:340px;background:#fff;border-radius:24px;box-shadow:var(--shr);border:1px solid var(--lc);padding:18px 18px 16px;opacity:0;transform:translateY(24px) scale(.94);transform-origin:70% 20%;transition:transform 640ms var(--eo),opacity 450ms var(--eo);will-change:transform,opacity;z-index:3}
     .onb .therm.on{opacity:1;transform:none}
     .onb .therm .lbl{font-size:13px;line-height:16px;font-weight:700;color:var(--c700)}
     .onb .therm .num{margin-top:6px;font-size:44px;line-height:1;font-weight:800;letter-spacing:-.035em;font-variant-numeric:tabular-nums;color:var(--ink9)}
@@ -100,36 +100,37 @@
     .onb .tk.tk45{font-size:0}
     .onb .tk.tk45::before{margin-right:0}
     .onb .tube2{position:absolute;left:28px;bottom:58px;width:20px;height:170px;border-radius:10px 10px 0 0;background:var(--c100);overflow:hidden}
-    .onb .fill2{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(to top,#FF8A80,#FFAB91);border-radius:10px 10px 0 0}
+    .onb .fill2{position:absolute;left:0;right:0;bottom:0;height:170px;transform:translateY(170px);will-change:transform;background:linear-gradient(to top,#FF8A80,#FFAB91);border-radius:10px 10px 0 0}
     .onb .fill2::after{content:"";position:absolute;left:4px;top:8px;width:4px;height:50%;border-radius:2px;background:rgba(255,255,255,.45)}
     .onb .bulb2{position:absolute;left:18px;bottom:18px;width:40px;height:40px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#FFB3AB,#FF8A80 60%,#F26D63);animation:onbPulse 2.4s var(--ei) infinite}
     @keyframes onbPulse{0%,100%{box-shadow:0 0 0 5px rgba(255,138,128,.14)}50%{box-shadow:0 0 0 11px rgba(255,138,128,.07)}}
     .onb .tk{position:absolute;left:56px;font-size:11px;font-weight:600;color:var(--ink3);transform:translateY(50%)}
     .onb .tk::before{content:"";display:inline-block;width:6px;height:1.5px;background:var(--c200);vertical-align:middle;margin-right:4px}
     .onb .areas2{position:absolute;right:18px;bottom:62px;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
-    .onb .ar{height:28px;padding:0 10px;border-radius:999px;background:#FFF9F5;border:1px solid var(--ln);font-size:12.5px;font-weight:700;color:var(--ink3);display:flex;align-items:center;transition:all 300ms var(--es)}
+    .onb .ar{height:28px;padding:0 10px;border-radius:999px;background:#FFF9F5;border:1px solid var(--ln);font-size:12.5px;font-weight:700;color:var(--ink3);display:flex;align-items:center;transition:transform 300ms var(--es),background-color 300ms var(--eo),border-color 300ms var(--eo),color 300ms var(--eo),box-shadow 300ms var(--eo)}
     .onb .ar.on{background:var(--c500);border-color:var(--c500);color:#fff;transform:scale(1.06);box-shadow:0 6px 14px rgba(255,138,128,.35)}
     .onb .ar.done{background:var(--c100);border-color:var(--c200);color:var(--c800);transform:none;box-shadow:none}
-    .onb .hint2{position:absolute;left:18px;right:18px;bottom:14px;font-size:12px;font-weight:600;color:var(--c800);text-align:right;opacity:0;transform:translateY(4px);transition:all 300ms var(--eo)}
+    .onb .hint2{position:absolute;left:18px;right:18px;bottom:14px;font-size:12px;font-weight:600;color:var(--c800);text-align:right;opacity:0;transform:translateY(4px);transition:transform 300ms var(--eo),opacity 300ms var(--eo)}
     .onb .hint2.on{opacity:1;transform:none}
     .onb .pointer{position:absolute;left:166px;top:236px;z-index:6;opacity:0;transition:opacity 300ms}
     .onb .pointer.on{opacity:1}
     .onb .pointer i{display:block;width:10px;height:10px;border-radius:50%;background:var(--c500);animation:onbPing 1.2s var(--eo) infinite}
     @keyframes onbPing{0%{box-shadow:0 0 0 0 rgba(255,138,128,.55)}100%{box-shadow:0 0 0 16px rgba(255,138,128,0)}}
-    .onb .bottom{position:absolute;left:0;right:0;bottom:0;padding:0 20px 34px;z-index:10;transform:translateY(140%);transition:transform 640ms var(--es)}
+    .onb .bottom{position:absolute;left:0;right:0;bottom:0;padding:0 20px 34px;z-index:10;transform:translateY(140%);transition:transform 640ms var(--eo);will-change:transform}
     .onb .bottom.on{transform:none}
-    #onb > .bottom{left:max(0px,calc(50% - 195px));right:max(0px,calc(50% - 195px));padding:0 20px calc(34px + env(safe-area-inset-bottom,0px))}
+    #onb > .bottom{left:max(0px,calc(50% - 195px));right:max(0px,calc(50% - 195px));padding:0 20px max(34px,calc(16px + env(safe-area-inset-bottom,0px)),calc(16px + env(safe-area-max-inset-bottom,0px)),calc(16px + var(--nav-floor,0px)))}
+    @media (max-width:374px){#onb > .bottom{padding-left:16px;padding-right:16px}}
     #onb > .top{left:max(0px,calc(50% - 195px));right:max(0px,calc(50% - 195px));padding:0 16px 0 20px}
     #onb > .top .skip{height:44px;min-width:44px;padding:0 4px}
     .onb .kakao{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:56px;border-radius:16px;background:#FEE500;color:#191919;font-size:17px;font-weight:800;border:0;animation:onbKpulse 2s var(--ei) infinite 700ms}
     .onb .kakao:disabled{opacity:.6}
     @keyframes onbKpulse{0%,100%{box-shadow:0 8px 20px rgba(254,229,0,.35),0 0 0 0 rgba(254,229,0,.5)}50%{box-shadow:0 8px 20px rgba(254,229,0,.35),0 0 0 8px rgba(254,229,0,0)}}
-    .onb .privacy{margin:10px 0 2px;text-align:center;font-size:11px;line-height:16px;color:var(--ink4)}
+    .onb .privacy{margin:8px 0 2px;text-align:center;font-size:11px;line-height:1.45;letter-spacing:-.02em;color:var(--ink4);text-wrap:balance}
     .onb .inst{display:flex;width:100%;align-items:center;justify-content:center;gap:6px;height:42px;font-size:14px;font-weight:600;color:var(--ink5);background:none;border:0}
     .onb .mchip{position:absolute;right:16px;top:84px;height:30px;padding:0 10px 0 8px;border-radius:999px;background:#fff;border:1.5px solid var(--c300);box-shadow:var(--shc);display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;color:var(--c800);opacity:0;transform:scale(.6);z-index:4;white-space:nowrap}
     .onb .mchip svg{width:16px;height:16px}
     .onb .plus{position:absolute;right:18px;top:18px;font-size:15px;font-weight:800;color:var(--c700);opacity:0}
-    .onb .qcard{position:absolute;left:50%;top:540px;transform:translateX(-50%) scale(.6);opacity:0;z-index:6;width:230px;padding:14px 18px 12px;border-radius:22px;background:#fff;box-shadow:var(--shr);border:1px solid var(--lc);text-align:center;transition:all 520ms var(--es)}
+    .onb .qcard{position:absolute;left:50%;top:540px;transform:translateX(-50%) scale(.6);opacity:0;z-index:6;width:230px;padding:14px 18px 12px;border-radius:22px;background:#fff;box-shadow:var(--shr);border:1px solid var(--lc);text-align:center;transition:transform 560ms var(--eo),opacity 400ms var(--eo);will-change:transform,opacity}
     .onb .qcard.on{opacity:1;transform:translateX(-50%) scale(1)}
     .onb .qcard .ql{font-size:13px;font-weight:700;color:var(--c700);display:flex;align-items:center;justify-content:center;gap:5px}
     .onb .qcard .qn{margin-top:4px;font-size:40px;line-height:1.05;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--ink9)}
@@ -155,7 +156,7 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v11-7";
+      const APP_VERSION = "v11-8";
 
       // v11.6 사이봇 말풍선 문구 — 전부 여기서만 바꾼다 (Product Marketer 최종 문구). 앱 어디에도 쪽수는 넣지 않는다.
       const SAIBOT_LINES = {
@@ -932,7 +933,7 @@
         }
         return Promise.resolve(p).then(() => 'shared', (err) => {
           if (err && err.name === 'AbortError') return 'aborted';
-          return copyText(fallbackText).then(() => { showToast('링크 복사 완료!'); return 'copied'; },
+          return copyText(fallbackText).then(() => { showToast(/http/.test(String(fallbackText || '')) ? '링크 복사 완료!' : '복사했어요'); return 'copied'; },
             () => { showToast('잠시 후 다시 시도해 주세요'); return 'failed'; });
         });
       }
@@ -1325,14 +1326,17 @@
         const st = $o('st'), act = $o('act'), sb = $o('sb'), talk = $o('talk');
         const setStage = (v) => { root.setAttribute('data-stage', v); };
         const fit = () => {
-          const w = root.clientWidth || 390, h = root.clientHeight || 844;
-          // 스토리 무대만 줄이고, 아래 카카오 영역(176px)과 위 막대는 원래 크기 그대로
-          const k = Math.min(w / 390, h / 844, (h - 176) / 640, 1.15);
+          const vv = window.visualViewport;
+          const w = root.clientWidth || 390, h = Math.round((vv && vv.height) || root.clientHeight || window.innerHeight || 844);
+          // 스토리 무대만 줄이고, 아래 카카오 영역(실제 높이, 2줄 안내 포함)과 위 막대는 원래 크기 그대로
+          const bh = $o('bottom').offsetHeight || 176;
+          const k = Math.min(w / 390, h / 844, (h - bh - 8) / 640, 1.15);
           st.style.transform = 'translateX(-50%) scale(' + k + ')';
           st.style.top = '0px';
         };
         fit();
         window.addEventListener('resize', fit);
+        if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
         const tmo = (fn, ms) => { const t = setTimeout(() => { c.timers.delete(t); if (c.alive) fn(); }, ms); c.timers.add(t); return t; };
         const sleep = (ms) => new Promise((r) => {
           if (!c.alive || c.skip) return r();
@@ -1368,7 +1372,12 @@
             mouth.animate([{ transform: 'scale(1,1)' }, { transform: 'scale(1.15,1.9)' }, { transform: 'scale(1,1)' }], { duration: 220, iterations: Infinity, easing: E.inout }),
             $o('breathe').animate([{ transform: 'translateY(0) rotate(0)' }, { transform: 'translateY(-4px) rotate(-2deg)' }, { transform: 'translateY(0) rotate(0)' }, { transform: 'translateY(-3px) rotate(2deg)' }, { transform: 'translateY(0) rotate(0)' }], { duration: 900, iterations: Infinity, easing: E.inout })];
         };
-        const talkStop = () => { if (c.talking) { c.talking.forEach((a) => a.cancel()); c.talking = null; } };
+        const talkStop = () => {
+          if (!c.talking) return;
+          const list = c.talking; c.talking = null;
+          // 입·몸 흔들기를 뚝 끊지 않고 남은 반 박자 안에 제자리로
+          list.forEach((a) => { try { a.updatePlaybackRate(0.6); a.effect.updateTiming({ iterations: Math.ceil(a.currentTime / a.effect.getTiming().duration) || 1 }); a.finished.then(() => a.cancel(), () => {}); } catch (_e) { a.cancel(); } });
+        };
         const jump = () => { sb.classList.add('fast'); return anim(act, [
           { transform: 'translateY(0) scale(1,1)' }, { transform: 'translateY(4px) scale(1.14,.84)', offset: 0.15 },
           { transform: 'translateY(-46px) scale(.9,1.12)', offset: 0.45 }, { transform: 'translateY(0) scale(1.12,.86)', offset: 0.75 },
@@ -1390,28 +1399,36 @@
           talk.appendChild(b);
           return b;
         };
+        const CHAR_MS = 29, GAP_MS = 400, READ_MIN = 600;
         const say = async (text, stage) => {
           const prev = [...talk.children];
-          await sleep(400);
-          if (!c.alive) return;
+          // 쉬는 0.4초 동안에도 멈추지 않게: 이전 말풍선이 먼저 작아지며 흐려지기 시작
           prev.forEach((p) => p.classList.add(p.classList.contains('old') ? 'old2' : 'old'));
+          await sleep(GAP_MS);
+          if (!c.alive) return;
+          // FLIP: 새 말풍선이 들어와도 이전 말풍선이 뚝 밀리지 않고 transform으로 미끄러져 올라감
+          const y0 = prev.map((p) => p.getBoundingClientRect().top);
           const b = bubble(text);
           if (stage) setStage(stage);
-          anim(b, [{ transform: 'scale(.6) translateY(12px)', opacity: 0 }, { transform: 'scale(1.04) translateY(-2px)', opacity: 1, offset: 0.6 }, { transform: 'scale(1) translateY(0)', opacity: 1 }], { duration: 380, easing: E.spring });
+          if (!RM) prev.forEach((p, i) => {
+            const dy = y0[i] - p.getBoundingClientRect().top;
+            if (Math.abs(dy) > 0.5) anim(p, [{ translate: '0 ' + dy + 'px' }, { translate: '0 0' }], { duration: 450, easing: E.out });
+          });
+          anim(b, [{ transform: 'scale(.86) translateY(14px)', opacity: 0 }, { transform: 'scale(1.02) translateY(-1px)', opacity: 1, offset: 0.65 }, { transform: 'scale(1) translateY(0)', opacity: 1 }], { duration: 450, easing: E.out });
           talkStart();
           c.typing = true;
           for (const s of b.querySelectorAll('.c')) {
             s.classList.add('v');
-            if (!c.hurry && !c.skip && !RM && c.alive) await new Promise((r) => setTimeout(r, 22));
+            if (!c.hurry && !c.skip && !RM && c.alive) await new Promise((r) => setTimeout(r, CHAR_MS));
           }
           b.querySelectorAll('.c').forEach((s) => s.classList.add('v'));
           c.typing = false; c.hurry = false;
           talkStop();
-          await sleep(Math.min(1600, 500 + text.length * 18));
+          await sleep(Math.max(READ_MIN, Math.min(1800, 600 + text.length * 18)));
           return b;
         };
         const setStep = (n) => { [...$o('dots').children].forEach((d, i) => d.classList.toggle('on', i === n)); };
-        const setTemp = (v) => { $o('tnum').textContent = v.toFixed(1); $o('fill').style.height = ((v - 30) / 15 * 170) + 'px'; };
+        const setTemp = (v) => { $o('tnum').textContent = v.toFixed(1); $o('fill').style.transform = 'translateY(' + (170 - (v - 30) / 15 * 170).toFixed(2) + 'px)'; };
         const countUp = (to, ms, from) => new Promise((r) => {
           const f0 = from === undefined ? 30 : from;
           if (RM) { setTemp(to); return r(); }
@@ -1459,19 +1476,24 @@
         };
         const goC = async () => {
           setStep(2); setStage('C0');
-          [...talk.children].forEach((b) => anim(b, [{ opacity: getComputedStyle(b).opacity }, { opacity: 0, transform: 'translateY(-12px)' }], { duration: 300, easing: E.out, fill: 'forwards' }));
-          act.getAnimations && act.getAnimations().forEach((a) => a.cancel());
-          act.style.opacity = 1; act.style.transform = '';
+          const outC = Promise.all([...talk.children].map((b) => anim(b, [{ opacity: getComputedStyle(b).opacity }, { opacity: 0, transform: 'translateY(-12px)' }], { duration: 450, easing: E.out, fill: 'forwards' })));
+          // 가리키던 자세(7°)에서 0°로 부드럽게 돌아옴 (cancel로 뚝 끊지 않음)
+          const tilt = act.getAnimations ? act.getAnimations() : [];
+          const from = getComputedStyle(act).transform;
+          act.style.opacity = 1;
+          const back = anim(act, [{ transform: from === 'none' ? 'none' : from }, { transform: 'none' }], { duration: 450, easing: E.out });
+          tilt.forEach((a) => a.cancel());
           $o('pointer').classList.remove('on');
           const th = $o('therm');
-          th.style.transition = 'all 560ms cubic-bezier(.22,1,.36,1)'; th.style.transform = 'translate(0,-6px) scale(.86)'; th.style.opacity = '0';
+          th.style.transition = 'transform 560ms cubic-bezier(.22,1,.36,1),opacity 450ms cubic-bezier(.22,1,.36,1)'; th.style.transform = 'translate(0,-6px) scale(.86)'; th.style.opacity = '0';
           sb.style.transform = 'translate(0,0) scale(1.05)'; $o('glow').style.transform = 'translate(0,0) scale(1.1)';
           $o('skip').style.opacity = 0; $o('skip').style.pointerEvents = 'none';
           onbMarkSeen();
           // 건너뛰기로 왔으면 카카오 버튼을 바로 올린다 (2초 안에 닿게)
           if (c.skip) { $o('bottom').classList.add('on'); root.setAttribute('data-cta', '1'); }
-          await new Promise((r) => setTimeout(r, RM ? 0 : 650));
+          await Promise.all([outC, back]);
           if (!c.alive) return;
+          act.style.transform = '';
           talk.innerHTML = ''; talk.classList.remove('side');
           await jump(); burst(); await jump();
           if (!c.alive) return;
@@ -1493,14 +1515,15 @@
           if (done()) return;
           // B
           setStep(1); setStage('B0');
-          [...talk.children].forEach((b) => anim(b, [{ opacity: getComputedStyle(b).opacity, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-16px) scale(.9)' }], { duration: 320, easing: E.out, fill: 'forwards' }));
-          await sleep(300); if (done()) return;
-          talk.innerHTML = '';
+          // 장면 겹치기: 말풍선 나감 0.45s ↔ 0.15s부터 사이봇 이동(0.9s) ↔ 0.4s부터 온도계 등장 ↔ 0.7s 가리키기
+          const outB = Promise.all([...talk.children].map((b) => anim(b, [{ opacity: getComputedStyle(b).opacity, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-16px) scale(.94)' }], { duration: 450, easing: E.out, fill: 'forwards' })));
+          await sleep(150); if (done()) return;
           sb.style.transform = 'translate(-112px,-201px) scale(.72)'; $o('glow').style.transform = 'translate(-110px,-212px) scale(.8)';
-          await sleep(450); if (done()) return;
+          await sleep(250); if (done()) return;
           $o('therm').classList.add('on');
-          anim(act, [{ transform: 'rotate(0)' }, { transform: 'rotate(10deg) translateX(6px)', offset: 0.4 }, { transform: 'rotate(7deg) translateX(4px)' }], { duration: 600, easing: E.spring, fill: 'forwards' });
-          $o('pointer').classList.add('on');
+          tmo(() => { anim(act, [{ transform: 'rotate(0)' }, { transform: 'rotate(10deg) translateX(6px)', offset: 0.4 }, { transform: 'rotate(7deg) translateX(4px)' }], { duration: 600, easing: E.spring, fill: 'forwards' }); $o('pointer').classList.add('on'); }, 300);
+          await outB; if (done()) return;
+          talk.innerHTML = '';
           talk.classList.add('side');
           const cu = countUp(36.5, 1800);
           await say(B[0], 'B1');
@@ -1547,6 +1570,7 @@
           stop() {
             c.alive = false;
             window.removeEventListener('resize', fit);
+            if (window.visualViewport) window.visualViewport.removeEventListener('resize', fit);
             c.timers.forEach(clearTimeout); c.ivs.forEach(clearInterval);
             c.sleeps.forEach((it) => { clearTimeout(it.t); it.r(); });
             talkStop();
@@ -3043,8 +3067,8 @@
           if (gratitudeSentToday() || sendingGratitude) return;
           const sentence = currentGratitudeSentence();
           if (!sentence) return;
-          const url = location.origin + location.pathname;
-          const msg = sentence + '\n' + url;
+          // 문장만 보낸다 (링크 없이)
+          const msg = sentence;
           // 공유창은 탭 직후 바로 (앞에 await 없음)
           sendingGratitude = true;
           shareOrCopy({ text: msg }, msg).then((r) => {
@@ -3190,15 +3214,23 @@
         if (bump > 0) startWarmthBump(prev);
       }
 
+      // 실제 보이는 높이(--app-h)와, 안드로이드에서 시스템 내비 바 뒤까지 그릴 때의 바닥 여백(--nav-floor)
+      const fitViewport = () => {
+        const vv = window.visualViewport;
+        const h = Math.round(vv ? vv.height : window.innerHeight);
+        const de = document.documentElement;
+        de.style.setProperty('--app-h', h + 'px');
+        const behindNav = /Android/i.test(navigator.userAgent) && (screen.height - h) < 80;
+        de.style.setProperty('--nav-floor', behindNav ? '48px' : '0px');
+        const app = document.getElementById('app');
+        if (app) app.style.height = h + 'px';
+      };
       if (window.visualViewport) {
-        const fitViewport = () => {
-          const app = document.getElementById('app');
-          if (app) app.style.height = window.visualViewport.height + 'px';
-        };
         window.visualViewport.addEventListener('resize', fitViewport);
         window.visualViewport.addEventListener('scroll', fitViewport);
-        fitViewport();
       }
+      window.addEventListener('resize', fitViewport);
+      fitViewport();
 
       function kakaoNickname(user) {
         const m = (user && user.user_metadata) || {};
