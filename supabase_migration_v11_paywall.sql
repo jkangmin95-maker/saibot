@@ -32,7 +32,8 @@
 --   It maps the message to ONE fixed key with a keyword list (private.secret_topic: phone/contact/affection/date/tone,
 --   else 'other') and stores only (couple, author, key, time) in private.secret_topic_tags. The text is never stored.
 --   No Gemini call is added; sai_chat's Gemini request is unchanged except the one gated sentence below.
--- * Read time (my_report, paid only): the PARTNER's tags written at/after the partner's consent. Used only when the
+-- * Read time (my_report, paid only): the PARTNER's tags written at/after the partner's consent and before today
+--   00:00 KST (so the report changes at most once a day and can't be diffed to time one message). Used only when the
 --   partner has >= 3 such entries; a key counts only with >= 2 entries; 'other' never shown. Those counts are added
 --   to the mission-based counts and only the TOP 3 keys (no counts) are returned.
 -- * sai_chat system text: when the feature is OFF it is exactly the v9.1 text; when ON it says written sentences are
@@ -237,6 +238,8 @@ create or replace function public.my_report()
 returns jsonb language plpgsql stable security definer set search_path = public, pg_temp as $$
 declare c public.couples; e private.couple_entitlements; v_me text; v_partner text;
   v_total integer; v_way text; v_topics jsonb; v_ready boolean; v_partner_uid uuid; v_secret_n integer;
+  -- 비밀방 keys are used only from before today 00:00 KST, so polling the report can't time a single new message
+  v_cutoff timestamptz := (date_trunc('day', timezone('Asia/Seoul', now()))) at time zone 'Asia/Seoul';
 begin
   if auth.uid() is null then return null; end if;
   if (private.paywall_on()).id is null then return jsonb_build_object('enabled', false); end if;
@@ -269,7 +272,8 @@ begin
     -- the partner's 비밀방 entries written at/after the partner's own [확인했어요] for this couple
     select count(*) into v_secret_n from private.secret_topic_tags t
       join private.secret_report_consents s on s.user_id = t.author_user and s.couple_code = t.couple_code
-      where t.couple_code = c.code and t.author_user = v_partner_uid and t.created_at >= s.consented_at;
+      where t.couple_code = c.code and t.author_user = v_partner_uid and t.created_at >= s.consented_at
+        and t.created_at < v_cutoff;
 
     select coalesce(jsonb_agg(t.k order by t.n desc, t.ord), '[]'::jsonb) into v_topics from (
       select x.k, x.ord, sum(x.n) n from (
@@ -288,6 +292,7 @@ begin
           join private.secret_report_consents s on s.user_id = t.author_user and s.couple_code = t.couple_code
           where coalesce(v_secret_n, 0) >= 3
             and t.couple_code = c.code and t.author_user = v_partner_uid and t.created_at >= s.consented_at
+            and t.created_at < v_cutoff
             and t.topic <> 'other'
           group by t.topic
           having count(*) >= 2

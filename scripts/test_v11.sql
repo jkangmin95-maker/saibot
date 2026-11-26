@@ -237,7 +237,7 @@ select pg_temp.ok('one consent row (B, c1), nothing for A', (select count(*) = 1
 
 -- rows that pre-date B's consent (planted by admin) must never be used
 insert into private.secret_topic_tags(couple_code, author_user, topic, created_at)
-  select (select v from t_v where k = 'c1'), 'b2000000-0000-0000-0000-000000000022', 'affection', now() - interval '1 day' from generate_series(1, 5);
+  select (select v from t_v where k = 'c1'), 'b2000000-0000-0000-0000-000000000022', 'affection', now() - interval '2 days' from generate_series(1, 5);
 
 -- flag ON + consented: B writes 2 date messages -> still below the 3-entry minimum
 set local role authenticated;
@@ -255,6 +255,15 @@ select pg_temp.ok('A paid, B has 2 consented entries (< 3): topics are missions 
   public.my_report()->'report'->'topics' = '["contact", "tone"]'::jsonb);
 select pg_temp.as_user('b2000000-0000-0000-0000-000000000022');
 select pg_temp.chat((select v from t_v where k = 'c1'), '유튜브만 보고 있어');
+select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
+select pg_temp.ok('same-day 비밀방 keys are not used yet (report cannot be diffed to time one message)',
+  public.my_report()->'report'->'topics' = '["contact", "tone"]'::jsonb);
+reset role;
+update private.secret_topic_tags set created_at = created_at - interval '1 day'
+  where author_user = 'b2000000-0000-0000-0000-000000000022' and created_at >= now();
+update private.secret_report_consents set consented_at = consented_at - interval '1 day'
+  where user_id = 'b2000000-0000-0000-0000-000000000022';
+set local role authenticated;
 select pg_temp.as_user('a1000000-0000-0000-0000-000000000011');
 select pg_temp.ok('B has 3 consented entries: date (2) joins TOP 3, phone (1 < 2) and affection (pre-consent) do not',
   public.my_report()->'report'->'topics' = '["contact", "date", "tone"]'::jsonb);
@@ -289,7 +298,7 @@ select pg_temp.ok('outsider: consent row is for own couple, no topic rows on c1'
   and not exists (select 1 from private.secret_topic_tags where author_user = 'c3000000-0000-0000-0000-000000000033'));
 select pg_temp.ok('topic rows: B 3 consented (+5 planted pre-consent), A 3; nothing from flag-off or pre-consent chats',
   pg_temp.tags('b2000000-0000-0000-0000-000000000022') = 8 and pg_temp.tags('a1000000-0000-0000-0000-000000000011') = 3
-  and (select count(*) = 5 from private.secret_topic_tags where created_at < now()));
+  and (select count(*) = 5 from private.secret_topic_tags where created_at < now() - interval '36 hours'));
 -- unpaid couple: no topics at all
 select private.set_couple_paid((select v from t_v where k = 'code'), false);
 set local role authenticated;
