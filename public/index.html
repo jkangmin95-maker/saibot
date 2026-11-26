@@ -57,7 +57,7 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v11";
+      const APP_VERSION = "v11-4";
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
@@ -203,7 +203,12 @@
           paywall: null, // v11: get_paywall_config (켜져 있을 때만 값이 있음)
           report: null, // v11: my_report
           showReport: false,
-          secretInfoOpen: false
+          secretInfoOpen: false,
+          temp: null, // v11.3: my_temp (함수가 없으면 null → 카드 숨김, 예전 온도계 그대로)
+          tempView: null, // 'question' | 'wait' | 'result'
+          tempIdx: 0,
+          tempAnswers: [],
+          selfMissions: [] // v11.3: my_self_missions — 비밀방 글쓴이 본인에게만 보이는 미션
         };
       }
 
@@ -425,6 +430,8 @@
           if (consent !== null && applyShareConsent(consent && consent.id ? consent : null)) changed = true;
         }
         if (await refreshPaywall(false)) changed = true;
+        if (state.tempView !== 'question' && await refreshTemp(state.tempView === 'wait')) changed = true;
+        if (await refreshSelfMissions()) changed = true;
         if (changed) {
           saveState();
           if (!isUserTyping()) render();
@@ -729,13 +736,13 @@
         const h = hashStr(String(state.coupleCode || ''));
         const a = comboTypeFor('A', h % 8);
         const b = comboTypeFor('B', (h >>> 3) % 8);
-        return { a: a, b: b, name: a.name + ' × ' + b.name, temp: state.warmthTemp.toFixed(1), count: state.completedCount };
+        return { a: a, b: b, name: a.name + ' × ' + b.name, temp: shownTemp().toFixed(1), count: state.completedCount };
       }
 
       let comboImage = { key: '', url: '', blob: null, busy: false };
 
       function comboShareText(info) {
-        return info.name + '\n우리의 다정함 온도 ' + info.temp + '°C\n함께 달성한 다정함 미션 ' + info.count + '회';
+        return info.name + '\n' + (tempOn() ? '우리사이 온도 ' : '우리의 다정함 온도 ') + info.temp + '°C\n함께 달성한 다정함 미션 ' + info.count + '회';
       }
 
       function copyText(t) {
@@ -812,7 +819,7 @@
         ctx.fillStyle = '#FF8A80'; ctx.font = '800 96px ' + CARD_FONT; ctx.fillText('×', 540, 715);
         ctx.fillStyle = '#2D3436'; ctx.font = '800 88px ' + CARD_FONT; ctx.fillText(info.b.name, 540, 860);
         ctx.fillStyle = '#636E72'; ctx.font = '500 38px ' + CARD_FONT; ctx.fillText(info.b.desc, 540, 932);
-        ctx.fillStyle = '#2D3436'; ctx.font = '800 58px ' + CARD_FONT; ctx.fillText('우리의 다정함 온도 ' + info.temp + '°C', 540, 1120);
+        ctx.fillStyle = '#2D3436'; ctx.font = '800 58px ' + CARD_FONT; ctx.fillText((tempOn() ? '우리사이 온도 ' : '우리의 다정함 온도 ') + info.temp + '°C', 540, 1120);
         roundRect(ctx, 200, 1172, 680, 28, 14); ctx.fillStyle = '#FFF0EE'; ctx.fill();
         const pct = Math.min(100, Math.max(12, ((Number(info.temp) - 35) / 10) * 100)) / 100;
         const bar = ctx.createLinearGradient(200, 0, 880, 0);
@@ -1238,7 +1245,7 @@
                     </button>
                   ` : `
                     <div class="animate-pop flex items-center justify-between bg-[#E8F8F0] text-[#1E8449] px-3 py-2 rounded-xl text-xs font-bold" data-gratitude-stamp>
-                      <span>${sent.bump > 0 ? '오늘의 고마움 보냈어요. 온도가 올랐어요 💛' : '오늘의 고마움 보냈어요 💛'}</span>
+                      <span>${sent.bump > 0 || tempOn() ? '오늘의 고마움 보냈어요. 다음에 잴 때 온도에 담겨요 💛' : '오늘의 고마움 보냈어요 💛'}</span>
                       ${Number(sent.streak) > 1 ? `<span class="shrink-0 ml-2 whitespace-nowrap" data-gratitude-streak>${Math.floor(Number(sent.streak))}일째 ✓</span>` : ''}
                     </div>
                   `}
@@ -1249,7 +1256,7 @@
 
       function renderMissionsTab() {
         // 현재 내 역할에게 온 미션 + 공통 데일리 팁만 노출 (상대방 불만 0%)
-        const visibleMissions = state.missions.filter((m) => m.targetRole === 'BOTH' || m.targetRole === state.role);
+        const visibleMissions = withSelfMissions(state.missions.filter((m) => m.targetRole === 'BOTH' || m.targetRole === state.role));
         const pendingCount = visibleMissions.filter((m) => !m.accepted).length;
 
         return `
@@ -1259,14 +1266,14 @@
               <div class="flex items-center justify-between">
                 <div>
                   <p class="text-[11px] font-semibold text-white/85">${esc(state.myName)} ♥ ${esc(state.partnerName)} · 코드 ${esc(state.coupleCode)}</p>
-                  <p class="text-base font-extrabold mt-0.5">우리의 다정함 온도 <span data-mission-warmth-num>${state.warmthTemp.toFixed(1)}°C</span></p>
+                  <p class="text-base font-extrabold mt-0.5">${tempOn() ? '우리사이 온도' : '우리의 다정함 온도'} <span data-mission-warmth-num>${shownTemp().toFixed(1)}°C</span></p>
                 </div>
                 <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-extrabold text-sm">
                   ${state.completedCount}회
                 </div>
               </div>
               <div class="mt-3 w-full h-1.5 bg-white/30 rounded-full overflow-hidden">
-                <div class="h-full bg-white rounded-full transition-all duration-500" data-mission-warmth-bar style="width:${Math.min(100, Math.max(12, ((state.warmthTemp - 35) / 10) * 100))}%"></div>
+                <div class="h-full bg-white rounded-full transition-all duration-500" data-mission-warmth-bar style="width:${Math.min(100, Math.max(12, ((shownTemp() - 35) / 10) * 100))}%"></div>
               </div>
             </div>
             ${renderConsentRequestCard()}
@@ -1298,7 +1305,7 @@
                   ` : `
                     <div class="flex items-center justify-between bg-[#E8F8F0] text-[#1E8449] px-3 py-2 rounded-xl text-xs font-bold">
                       <span>✓ 다정함 스탬프 완료!</span>
-                      <span class="text-[10px] opacity-80">+1.2°C</span>
+                      ${tempOn() ? '' : '<span class="text-[10px] opacity-80">+1.2°C</span>'}
                     </div>
                   `}
                 </div>
@@ -1418,7 +1425,7 @@
       let warmthMotion = null;
 
       function warmthFrame(elapsed, from) {
-        const target = state.warmthTemp;
+        const target = shownTemp();
         const START = from == null ? 36.5 : from, RISE = 800, TOTAL = 1200;
         const dir = target >= START ? 1 : -1;
         const peak = target + dir * Math.min(0.6, Math.max(0.2, Math.abs(target - START) * 0.1));
@@ -1439,8 +1446,8 @@
         const bar = document.querySelector(sel ? sel.bar : '[data-warmth-bar]');
         if (!num || !bar) return false;
         if (elapsed >= 1200) {
-          num.textContent = state.warmthTemp.toFixed(1) + '°C';
-          bar.style[bar.dataset.warmthAxis === 'y' ? 'height' : 'width'] = warmthPct(state.warmthTemp) + '%';
+          num.textContent = shownTemp().toFixed(1) + '°C';
+          bar.style[bar.dataset.warmthAxis === 'y' ? 'height' : 'width'] = warmthPct(shownTemp()) + '%';
           return false;
         }
         const f = warmthFrame(elapsed, from);
@@ -1473,7 +1480,7 @@
         bumpMotion = null;
         let reduce = false;
         try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_e) {}
-        if (reduce || !(state.warmthTemp > from)) return;
+        if (reduce || tempOn() || !(state.warmthTemp > from)) return;
         const bar = document.querySelector(MISSION_WARMTH.bar);
         if (bar) bar.style.transitionDuration = '0s';
         const t0 = performance.now();
@@ -1494,19 +1501,20 @@
             <div class="bg-white rounded-3xl px-5 py-4 border border-[#FF8A80]/20 shadow-sm flex items-center" data-warmth-card>
               <div class="relative shrink-0 w-[36px] h-[118px]" aria-hidden="true" data-warmth-thermo>
                 <div class="absolute left-1/2 -translate-x-1/2 top-0 bottom-[32px] w-3 bg-[#FFF0EE] rounded-t-full overflow-hidden">
-                  <div class="absolute bottom-0 left-0 w-full bg-gradient-to-t from-[#FF8A80] from-[8px] to-[#FFAB91] rounded-t-full" data-warmth-bar data-warmth-axis="y" style="height:${warmthPct(state.warmthTemp)}%"></div>
+                  <div class="absolute bottom-0 left-0 w-full bg-gradient-to-t from-[#FF8A80] from-[8px] to-[#FFAB91] rounded-t-full" data-warmth-bar data-warmth-axis="y" style="height:${warmthPct(shownTemp())}%"></div>
                 </div>
                 <div class="absolute bottom-0 left-0 w-[36px] h-[36px] rounded-full bg-[#FF8A80]"></div>
                 <span class="absolute left-[27px] translate-y-1/2 text-[10px] leading-none text-[#B2BEC3]" style="bottom:${32 + 0.86 * warmthPct(36.5)}px">36.5</span>
                 <span class="absolute left-[27px] translate-y-1/2 text-[10px] leading-none text-[#B2BEC3]" style="bottom:${32 + 0.86 * warmthPct(45)}px">45</span>
               </div>
               <div class="flex-1 min-w-0 text-center">
-                <p class="text-xs font-bold text-[#FF8A80]">우리 커플 다정함 리포트</p>
-                <p class="text-4xl font-extrabold text-[#2D3436] mt-2" data-warmth-num>${state.warmthTemp.toFixed(1)}°C</p>
-                <p class="text-xs text-[#636E72] mt-1">함께 달성한 다정함 미션 ${state.completedCount}회</p>
+                <p class="text-xs font-bold text-[#FF8A80]">${tempOn() ? '우리사이 온도' : '우리 커플 다정함 리포트'}</p>
+                <p class="text-4xl font-extrabold text-[#2D3436] mt-2" data-warmth-num>${shownTemp().toFixed(1)}°C</p>
+                <p class="text-xs text-[#636E72] mt-1"${tempDaysLeft() > 0 ? ' data-temp-next' : ''}>${tempDaysLeft() > 0 ? '다음 측정까지 ' + tempDaysLeft() + '일' : '함께 달성한 다정함 미션 ' + state.completedCount + '회'}</p>
               </div>
             </div>
 
+            ${renderTempTabCard()}
             ${renderComboTabCard()}
             ${renderReportTabCard()}
 
@@ -1552,6 +1560,186 @@
               `}
             </div>`;
       }
+
+      // ---- v11.3: 우리사이 온도 (무료) ----
+      // 두 사람이 따로 10문항을 푼다. 온도·부분 온도·설명은 서버(my_temp / submit_temp)가 정해서 보내 준다 — 앱은 답 배열이나
+      // 고마움·미션 개수를 받지 않는다. 측정은 14일에 한 번 (서버가 막는다). 고마움·미션은 다음 측정 때 한 번에 반영된다.
+      // my_temp: {status: 'not_started' | 'waiting' | 'done', days_left, next_on, last: null | {total, measured_on, areas: [{key, label, temp, why, todo}]}}
+      // 문항 출처: 『긍정학개론』 — 고마움(1-2), 그럴 수 있지(3-5), 고정관념 내려놓기(6-8), 책임(9-10). 순서를 바꾸면 SQL의 v_map도 같이 바꿔야 한다.
+      const TEMP_QS = [
+        { t: 'gr', q: '연인이 해 준 작은 일, 고맙다고 말해요?', o: ['바로 말해요', '마음속으로만 해요', '잘 안 하게 돼요'] },
+        { t: 'gr', q: '오늘 연인에게 고마운 일, 바로 떠올라요?', o: ['바로 떠올라요', '조금 생각해야 해요', '잘 안 떠올라요'] },
+        { t: 'ok', q: '연인 답장이 늦으면?', o: ['"그럴 수 있지" 하고 넘겨요', '신경 쓰이지만 기다려요', '계속 마음에 걸려요'] },
+        { t: 'ok', q: '약속에 연인이 늦으면?', o: ['그럴 수 있지, 웃으며 맞아요', '한마디는 하게 돼요', '하루 기분이 가라앉아요'] },
+        { t: 'ok', q: '서운한 마음이 떠오르면?', o: ['오래 붙잡지 않아요', '하루쯤 붙잡고 있어요', '며칠 동안 남아 있어요'] },
+        { t: 'op', q: '"연인이라면 당연히 ~해야지" 생각, 자주 해요?', o: ['거의 안 해요', '가끔 해요', '자주 해요'] },
+        { t: 'op', q: '연인이 나와 다르게 생각하면?', o: ['다를 수 있지, 그대로 인정해요', '이해될 때까지 따져 봐요', '내 생각이 맞다고 느껴요'] },
+        { t: 'op', q: '다투고 나면?', o: ['"하나 배운 거지" 하고 정리해요', '시간이 좀 필요해요', '누가 잘못했는지 계속 생각해요'] },
+        { t: 'ac', q: '우리 사이에 문제가 생기면 먼저 보는 곳은?', o: ['내가 바꿀 수 있는 것', '둘 다 반반', '연인이 바뀌어야 할 것'] },
+        { t: 'ac', q: '마음을 어떻게 보여 줘요?', o: ['작은 행동으로 자주', '특별한 날에 몰아서', '말 안 해도 알 거라 생각해요'] }
+      ];
+      function tempOn() { return Boolean(state.temp); }
+      function tempLast() {
+        const l = state.temp && state.temp.last;
+        return l && Number.isFinite(Number(l.total)) && Array.isArray(l.areas) ? l : null;
+      }
+      // 홈 온도계 숫자: 잰 적이 있으면 마지막 측정 온도, 없으면 예전 다정함 온도 그대로 (첫 측정 전에 갑자기 내려가지 않게)
+      function shownTemp() { const l = tempLast(); return l ? Number(l.total) : state.warmthTemp; }
+      function tempDaysLeft() {
+        if (!tempLast()) return 0;
+        const d = Math.floor(Number(state.temp.days_left));
+        return Number.isFinite(d) && d > 0 ? Math.min(60, d) : 0;
+      }
+      function tempNextLabel() {
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String((state.temp && state.temp.next_on) || ''));
+        return m ? Number(m[2]) + '월 ' + Number(m[3]) + '일' : '';
+      }
+
+      let tempCheckedAt = 0;
+      // 서버 상태 새로고침. 함수가 아직 없으면(SQL 적용 전) null → 카드가 안 보인다. 바뀌었으면 true
+      async function refreshTemp(force) {
+        if (state.phase !== 'ready' || !state.partnerJoined) return false;
+        if (!force && Date.now() - tempCheckedAt < 15000) return false;
+        tempCheckedAt = Date.now();
+        const before = JSON.stringify(state.temp);
+        const f = await sbFetchQuiet('rpc/my_temp', { method: 'POST', body: '{}' });
+        if (f && typeof f === 'object' && !Array.isArray(f) && typeof f.status === 'string') state.temp = f;
+        if (state.tempView === 'wait' && state.temp && state.temp.status === 'done') state.tempView = 'result';
+        let moved = false;
+        // 처음 온 커플은 온도부터 잰다: 한 번만 우리 온도 탭으로 데려간다
+        if (state.temp && !tempLast() && state.temp.status === 'not_started' && state.activeTab !== 'warmth') {
+          const k = 'urisai_temp_intro_' + (state.coupleCode || '');
+          try { if (!localStorage.getItem(k)) { localStorage.setItem(k, '1'); state.activeTab = 'warmth'; moved = true; } } catch (_e) {}
+        }
+        return moved || before !== JSON.stringify(state.temp);
+      }
+
+      // 비밀방 글쓴이 본인 미션 (상대 피드에는 없다). 일반 미션과 같은 모양으로 피드에 섞는다.
+      function selfToMission(r) {
+        return { id: String(r.id), targetRole: state.role, title: String(r.title || ''), badge: String(r.badge || ''), message: String(r.message || ''),
+          time: '도착함', accepted: Boolean(r.accepted), createdAt: r.created_at || null, acceptedAt: r.accepted_at || null, self: true };
+      }
+      let selfCheckedAt = 0;
+      async function refreshSelfMissions() {
+        if (state.phase !== 'ready' || !state.partnerJoined || !tempOn()) return false;
+        if (Date.now() - selfCheckedAt < 15000) return false;
+        selfCheckedAt = Date.now();
+        const rows = await sbFetchQuiet('rpc/my_self_missions', { method: 'POST', body: '{}' });
+        if (!Array.isArray(rows)) return false;
+        const before = JSON.stringify((state.selfMissions || []).map((m) => [m.id, m.accepted]));
+        const busy = {};
+        (state.selfMissions || []).forEach((m) => { if (m.accepting) busy[m.id] = m; });
+        state.selfMissions = rows.slice(0, 30).map((r) => busy[r.id] || selfToMission(r));
+        return before !== JSON.stringify(state.selfMissions.map((m) => [m.id, m.accepted]));
+      }
+      async function addSelfMission() {
+        if (!tempOn()) return;
+        try {
+          const r = await rpc('create_self_mission', {});
+          if (r && r.id && !(state.selfMissions || []).some((m) => m.id === r.id)) {
+            state.selfMissions = [selfToMission(r)].concat(state.selfMissions || []);
+            render();
+          }
+        } catch (_e) {}
+      }
+      function withSelfMissions(list) {
+        const mine = state.selfMissions || [];
+        if (!mine.length) return list;
+        const ts = (m) => { const t = Date.parse(m.createdAt || ''); return Number.isFinite(t) ? t : Number.MAX_SAFE_INTEGER; };
+        return list.concat(mine).sort((x, y) => ts(y) - ts(x));
+      }
+
+      // 우리 온도 탭 — 온도계 카드 바로 아래
+      function renderTempTabCard() {
+        if (!state.partnerJoined || !state.temp) return '';
+        const done = state.temp.status === 'done';
+        const label = done ? (tempNextLabel() ? tempNextLabel() + '에 다시 재요' : '측정 완료') : (tempLast() && state.temp.status === 'not_started' ? '다시 재 보기' : '같이 재 보기');
+        const cls = done
+          ? 'w-full py-2.5 rounded-xl bg-[#EEF1F2] text-[#9AA5A9] text-xs font-extrabold transition-all'
+          : 'w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all';
+        return `
+            <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
+              <p class="text-xs font-bold text-[#2D3436]">온도 재기</p>
+              <button type="button" data-action="open-temp" data-temp-state="${esc(state.temp.status)}" class="${cls}">${esc(label)}</button>
+            </div>`;
+      }
+
+      // 서로 맞히기(quiz.html)와 같은 화면: 한 화면에 한 문항, 위에 진행 막대
+      function tempProgress(n) {
+        const total = TEMP_QS.length;
+        return `
+                  <div class="space-y-1.5">
+                    <div class="flex items-center justify-end"><span class="text-[11px] font-bold text-[#E0665B]">${n}/${total}</span></div>
+                    <div class="w-full h-2.5 bg-[#FFF0EE] rounded-full overflow-hidden">
+                      <div class="h-full bg-gradient-to-r from-[#FFAB91] to-[#FF8A80] rounded-full transition-all duration-300" style="width:${Math.round((n / total) * 100)}%"></div>
+                    </div>
+                  </div>`;
+      }
+
+      function renderTempScreen() {
+        const v = state.tempView;
+        const CARD = 'bg-white rounded-3xl p-5 border border-[#FF8A80]/15 shadow-[0_8px_28px_rgba(45,52,54,0.06)] animate-pop';
+        // 앱의 다른 버튼과 같은 모양 (분홍 그림자 없음)
+        const PRIMARY = 'w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all';
+        let inner = '';
+        if (v === 'question') {
+          const i = Math.min(state.tempIdx || 0, TEMP_QS.length - 1);
+          const item = TEMP_QS[i];
+          inner = `
+                <div class="${CARD} space-y-4">
+                  ${tempProgress(i + 1)}
+                  <h2 class="text-lg font-extrabold text-[#2D3436] text-center pt-2 pb-1">${esc(item.q)}</h2>
+                  <div class="space-y-2.5">
+                    ${item.o.map((label, k) => `<button type="button" data-action="temp-answer" data-i="${k}" class="w-full py-3.5 px-4 rounded-2xl bg-[#FFF9F5] active:bg-[#FFF0EE] border border-[#FF8A80]/30 text-sm font-bold text-[#2D3436] transition-colors">${esc(label)}</button>`).join('')}
+                  </div>
+                </div>`;
+        } else if (v === 'wait') {
+          inner = `
+                <div class="h-6"></div>
+                <div class="${CARD} space-y-5">
+                  ${tempProgress(TEMP_QS.length)}
+                  <h2 class="text-lg font-extrabold text-[#2D3436] text-center pt-1">${esc((state.partnerName || '연인') + '님이 풀면 결과가 열려요')}</h2>
+                  <button type="button" data-action="temp-send" class="${PRIMARY}">카톡으로 보내기</button>
+                </div>`;
+        } else if (v === 'result' && tempLast()) {
+          const l = tempLast();
+          const area = (a) => {
+            const t = Number(a.temp);
+            return `
+                    <div class="rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-3.5 text-left" data-temp-area>
+                      <div class="flex items-center justify-between">
+                        <p class="text-[11px] font-bold text-[#FF8A80]">${esc(a.label)}</p>
+                        <p class="text-sm font-extrabold text-[#2D3436]">${Number.isFinite(t) ? t.toFixed(1) : '-'}°C</p>
+                      </div>
+                      <div class="mt-1.5 w-full h-1.5 bg-[#FFF0EE] rounded-full overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-[#FFAB91] to-[#FF8A80] rounded-full" style="width:${warmthPct(Number.isFinite(t) ? t : 35)}%"></div>
+                      </div>
+                      <p class="text-[13px] text-[#4A5568] leading-relaxed mt-2">${esc(a.why)}</p>
+                      ${a.cite ? `<p class="text-[12px] text-[#9AA5A9] mt-0.5" data-temp-cite>${esc(a.cite)}</p>` : ''}
+                      <p class="text-[11px] font-bold text-[#FF8A80] mt-2.5">이번에 해 볼 일</p>
+                      <p class="text-sm font-extrabold text-[#2D3436] mt-0.5">${esc(a.todo)}</p>
+                    </div>`;
+          };
+          const pay = reportVisible() && !state.report.paid ? renderPayArea() : '';
+          inner = `
+                <div class="${CARD} space-y-3.5 text-center">
+                  <p class="text-5xl font-extrabold text-[#2D3436] pt-2 pb-1" data-temp-total>${Number(l.total).toFixed(1)}°C</p>
+                  ${l.areas.slice(0, 4).map(area).join('')}
+                </div>
+                <button type="button" data-action="temp-share" class="${PRIMARY}">친구 커플에게 보내기</button>
+                ${pay}`;
+        }
+        return `
+            <div class="fixed inset-0 z-50 bg-[#FFF9F5] flex flex-col overflow-y-auto" data-temp-screen>
+              <header class="shrink-0 bg-[#FFF9F5] border-b border-[#FF8A80]/15 px-4 pb-3 safe-top flex items-center justify-between">
+                <span class="text-base font-extrabold text-[#2D3436]">우리사이 온도</span>
+                <button type="button" data-action="close-temp" class="text-sm font-bold text-[#636E72] px-2 py-1">닫기</button>
+              </header>
+              <div class="flex-1 px-5 py-6 safe-bottom flex flex-col gap-4">${inner}</div>
+            </div>`;
+      }
+
+      function tempAppUrl() { return location.origin + location.pathname; }
 
       // v10: 우리 온도 탭 — 서로 맞히기 테스트 (연인 코드 카드 아래)
       function renderQuizTabCard() {
@@ -1625,6 +1813,7 @@
         let html = '';
         if (state.showCombo) html += renderComboModal();
         if (state.showReport && reportVisible()) html += renderReportModal();
+        if (state.tempView) html += renderTempScreen();
         if (state.showSettings) {
           html += `
             <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
@@ -1757,7 +1946,7 @@
               <img src="${AVATAR_SRC}" alt="우리사이" class="w-9 h-9 rounded-2xl object-cover border border-[#FF8A80]/30 shrink-0" />
               <div class="min-w-0">
                 <span class="text-base font-extrabold text-[#2D3436]">우리사이</span>
-                <p class="text-[11px] text-[#636E72] truncate">${esc(state.myName)} ♥ ${esc(state.partnerName)} · ${state.warmthTemp.toFixed(1)}°C</p>
+                <p class="text-[11px] text-[#636E72] truncate">${esc(state.myName)} ♥ ${esc(state.partnerName)} · ${shownTemp().toFixed(1)}°C</p>
               </div>
             </div>
             <button type="button" data-action="open-settings" class="w-8 h-8 rounded-xl bg-white border border-[#2D3436]/10 flex items-center justify-center text-sm shrink-0" aria-label="설정">
@@ -1881,6 +2070,7 @@
           saveState();
           render();
           if (state.activeTab === 'warmth' && paywallOn() && await refreshPaywall(true)) render();
+          if (state.activeTab === 'warmth' && await refreshTemp(true)) render();
         } else if (action === 'quick-tag') {
           state.draftInput = btn.getAttribute('data-sample') || '';
           render();
@@ -1956,7 +2146,17 @@
             accepted: false
           };
           try {
-            await sbFetch('daily_missions', {
+            // v11.3: 서버가 비밀방 출처를 기록하는 RPC. 실패하면 예전처럼 직접 넣는다
+            let viaRpc = false;
+            if (tempOn()) {
+              try {
+                await rpc('send_secret_mission', { p_id: missionId, p_title: draft.title, p_badge: draft.badge || '', p_message: draft.message });
+                viaRpc = true;
+              } catch (_e) {
+                // 함수가 없거나 서버가 거절하면(no_saibot_use 등) 미션은 예전처럼 보낸다 (셀프 미션만 안 생김)
+              }
+            }
+            if (!viaRpc) await sbFetch('daily_missions', {
               method: 'POST',
               body: JSON.stringify({
                 id: missionId,
@@ -1979,15 +2179,32 @@
           saveState();
           render();
           showToast('상대방 피드에 자연스러운 데일리 미션이 도착했어요 ✨');
+          addSelfMission();
         } else if (action === 'accept-mission') {
           const id = btn.getAttribute('data-id');
+          const selfM = (state.selfMissions || []).find((m) => m.id === id);
+          if (selfM) {
+            if (selfM.accepted || selfM.accepting) return;
+            selfM.accepting = true; selfM.accepted = true; render();
+            try {
+              const r = await rpc('accept_self_mission', { p_id: id });
+              selfM.accepted = Boolean(r && r.accepted);
+              selfM.accepting = false;
+              render();
+              showToast('미션 완료! 다음에 잴 때 온도에 담겨요 💛');
+            } catch (_e) {
+              selfM.accepting = false; selfM.accepted = false; render();
+              showToast('잠시 후 다시 시도해 주세요');
+            }
+            return;
+          }
           const mission = state.missions.find((m) => m.id === id);
           if (!mission || mission.accepted || mission.accepting) return;
           mission.accepting = true;
           const prevTemp = state.warmthTemp;
           const prevCount = state.completedCount;
           mission.accepted = true;
-          state.warmthTemp = Math.min(45.0, Number((state.warmthTemp + 1.2).toFixed(1)));
+          if (!tempOn()) state.warmthTemp = Math.min(45.0, Number((state.warmthTemp + 1.2).toFixed(1)));
           state.completedCount += 1;
           render();
           try {
@@ -2018,7 +2235,7 @@
             mission.accepting = false;
             saveState();
             render();
-            showToast('다정함 스탬프 완료! 온도가 올랐어요 💛');
+            showToast('미션 완료! 다음에 잴 때 온도에 담겨요 💛');
           } catch (_e) {
             mission.accepting = false;
             mission.accepted = false;
@@ -2095,6 +2312,48 @@
           render();
           ensureComboImage();
           logEvent('combo_view');
+        } else if (action === 'open-temp') {
+          const f = state.temp;
+          if (!f) return;
+          hideToast();
+          if (f.status === 'done') { if (!tempLast()) return; state.tempView = 'result'; }
+          else if (f.status === 'waiting') state.tempView = 'wait';
+          else { state.tempView = 'question'; state.tempIdx = 0; state.tempAnswers = []; }
+          render();
+          if (state.tempView !== 'question' && await refreshTemp(true)) render();
+          if (state.tempView === 'result' && paywallOn() && await refreshPaywall(true)) render();
+        } else if (action === 'close-temp') {
+          state.tempView = null;
+          render();
+        } else if (action === 'temp-answer') {
+          if (state.tempView !== 'question' || state.busy) return;
+          const i = state.tempIdx || 0;
+          state.tempAnswers[i] = Number(btn.getAttribute('data-i')) || 0;
+          if (i < TEMP_QS.length - 1) { state.tempIdx = i + 1; render(); return; }
+          state.busy = true;
+          try {
+            const f = await rpc('submit_temp', { p_answers: state.tempAnswers.slice(0, TEMP_QS.length) });
+            if (f && typeof f.status === 'string') state.temp = f;
+            state.tempView = state.temp && state.temp.status === 'done' && tempLast() ? 'result' : 'wait';
+          } catch (_e) {
+            // too_soon 등: 서버 상태로 다시 맞춘다
+            await refreshTemp(true);
+            state.tempView = state.temp && state.temp.status === 'done' && tempLast() ? 'result' : null;
+            if (!state.tempView) showToast('잠시 후 다시 시도해 주세요');
+          }
+          state.busy = false;
+          render();
+          if (state.tempView === 'result' && paywallOn() && await refreshPaywall(true)) render();
+        } else if (action === 'temp-send') {
+          const text = '우리사이 온도, 나는 다 풀었어. 너도 풀면 같이 볼 수 있어.';
+          const url = tempAppUrl();
+          shareOrCopy({ title: '우리사이', text: text, url: url }, text + '\n' + url);
+        } else if (action === 'temp-share') {
+          const l = tempLast();
+          if (!l) return;
+          const text = '우리사이 온도 재 봤어. 🌡️ ' + Number(l.total).toFixed(1) + '°C\n너희 커플은 몇 도야? 둘이 따로 재면 나와.';
+          const url = tempAppUrl();
+          shareOrCopy({ title: '우리사이', text: text, url: url }, text + '\n' + url);
         } else if (action === 'open-quiz') {
           location.href = './quiz.html';
         } else if (action === 'request-share') {
