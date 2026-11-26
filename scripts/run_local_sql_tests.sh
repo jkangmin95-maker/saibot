@@ -5,7 +5,7 @@
 #   v11: up -> up again -> test_v10 + test_v11 -> down -> test_v10 -> up -> test_v10 + test_v11
 #   v11.1: up -> up again -> test_v11 + test_v11_1 -> down -> test_v11 -> up -> test_v11_1
 #   sai_chat probe (scripts/probe_sai_chat.sql): the Gemini request sai_chat builds with the v11 flag OFF must be
-#   byte-for-byte the v9.1 one, and v11 down must restore the exact v9.1 function source.
+#   byte-for-byte the v9.1 one, and v11 down must restore the exact v9.1 sai_chat / v9 generate_mission source.
 # Needs a local Postgres you can reach as superuser, e.g. PGHOST=/tmp PGPORT=5432 PGUSER=postgres.
 # The pg http extension is replaced by a stub (scripts/local_supabase_stub.sql), so Gemini calls just return null.
 set -u
@@ -42,8 +42,8 @@ echo "== v11"
 apply $V11.sql "v11 up"; apply $V11.sql "v11 up again"; run_tests scripts/test_v10.sql; run_tests scripts/test_v11.sql
 probe v11off; same "sai_chat flag OFF: Gemini request + result identical to v9.1" v11off "^(RESULT|BODY|ATTEMPTS)"
 apply ${V11}_down.sql "v11 down"
-probe v11down; same "v11 down: sai_chat source/config identical to v9.1 and same request" v11down "^(RESULT|BODY|ATTEMPTS|SRC)"
-echo "  left after v11 down: tables=$($P -d $DB -tAc "select count(*) from pg_tables where schemaname='private' and tablename in ('paywall_config','couple_entitlements','secret_report_consents','secret_topic_tags')") functions=$($P -d $DB -tAc "select count(*) from pg_proc where proname in ('get_paywall_config','request_pay_code','my_report','paywall_on','new_pay_code','set_couple_paid','consent_secret_report','record_secret_topic','secret_topic')") log_event_v11_events=$($P -d $DB -tAc "select count(*) from pg_proc where proname='log_event' and prosrc like '%paywall_view%'")"
+probe v11down; same "v11 down: sai_chat + generate_mission source/config identical to v9.1/v9 and same request" v11down "^(RESULT|BODY|ATTEMPTS|SRC)"
+echo "  left after v11 down: tables=$($P -d $DB -tAc "select count(*) from pg_tables where schemaname='private' and tablename in ('paywall_config','couple_entitlements','secret_report_consents','secret_topic_tags','couple_passes','report_snapshots','secret_ai_usage')") functions=$($P -d $DB -tAc "select count(*) from pg_proc where proname in ('get_paywall_config','request_pay_code','my_report','paywall_on','new_pay_code','set_couple_paid','consent_secret_report','record_secret_topic','secret_topic','withdraw_secret_report','recompute_paid_until','secret_ai_daily_cap','take_secret_ai_call')") generate_mission_capped=$($P -d $DB -tAc "select count(*) from pg_proc where proname='generate_mission' and prosrc like '%take_secret_ai_call%'") log_event_v11_events=$($P -d $DB -tAc "select count(*) from pg_proc where proname='log_event' and prosrc like '%paywall_view%'")"
 run_tests scripts/test_v10.sql
 apply $V11.sql "v11 up after down"; run_tests scripts/test_v10.sql; run_tests scripts/test_v11.sql
 probe v11again; same "v11 up after down, flag OFF: sai_chat request identical to v9.1" v11again "^(RESULT|BODY|ATTEMPTS)"

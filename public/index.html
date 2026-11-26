@@ -474,6 +474,7 @@
       // 서버에 [확인했어요]가 기록됐을 때만 저장 (실패하면 다음에 카드가 다시 뜬다)
       function secretInfoKey() { return 'urisai_secret_consent_' + state.userId + '_' + state.coupleCode; }
       let secretInfoAcked = false;
+      let capNotice = false; // 비밀방 하루 상한(서버 sai_chat {capped:true})
       function checkoutKey() { return 'urisai_checkout_opened_' + state.coupleCode; }
 
       async function refreshPaywall(force) {
@@ -572,7 +573,9 @@
 
       function renderPayArea() {
         const r = state.report; const p = state.paywall;
-        const btn = (label) => `<button type="button" data-action="pay-open" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">${label}</button>`;
+        // 연인 비밀방 글이 3개 미만이면 결제 버튼 자리에 한 줄만
+        const btn = (label) => r.posts_ready !== true ? `<p class="py-2.5 text-xs font-bold text-[#636E72] text-center">글이 3개 쌓이면 열 수 있어요</p>`
+          : `<button type="button" data-action="pay-open" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">${label}</button>`;
         if (!r.pay_code) {
           return `
                 <div class="rounded-2xl border border-[#FF8A80] ring-2 ring-[#FF8A80]/15 p-4 space-y-3 text-center">
@@ -595,6 +598,7 @@
                   </div>
                   <p class="text-[11px] text-[#636E72] leading-relaxed">주문할 때 배송 메모 칸에 이 코드를 꼭 붙여 넣어 주세요. 이 코드로 두 분을 찾아서 열어 드려요.</p>
                   ${btn('결제하러 가기')}
+                  ${r.posts_ready === true ? '<p class="text-[11px] text-[#9AA5A9] text-center">디지털 상품이라 결제 후에는 환불되지 않아요.</p>' : ''}
                 </div>
                 ${opened ? `
                 <div class="rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-4 text-center">
@@ -952,6 +956,7 @@
 
         const r = await rpcTimed('sai_chat', { couple_code: state.coupleCode, messages: chatHistory(role) }, 27000);
         const d = r.data;
+        if (r.status === 200 && d && d.capped === true) return { capped: true };
         if (r.status === 200 && d && typeof d.reply === 'string' && d.reply.trim()) {
           const drafts = (Array.isArray(d.missions) ? d.missions : [])
             .filter((m) => m && m.message)
@@ -1395,6 +1400,12 @@
                     </div>
                   </div>
 
+                  ${paywallOn() && state.paywall.report_consent === true ? `
+                  <div class="flex items-center justify-between rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/15 px-3 py-2.5">
+                    <span class="font-bold text-[#636E72]">리포트에 비밀방 주제 쓰기</span>
+                    <button type="button" data-action="withdraw-secret-report" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">끄기</button>
+                  </div>` : ''}
+
                   <button type="button" data-action="open-install" class="w-full text-left rounded-2xl bg-white border border-[#2D3436]/8 px-3.5 py-3 flex items-center justify-between">
                     <span>
                       <span class="block font-bold text-[#2D3436]">홈 화면에 추가</span>
@@ -1410,6 +1421,17 @@
                 <button type="button" data-action="logout-ask" class="mt-5 w-full py-3 rounded-2xl border border-[#FF8A80]/30 text-[#E0665B] text-xs font-extrabold bg-white hover:bg-[#FFF0EE]">
                   로그아웃
                 </button>
+              </div>
+            </div>
+          `;
+        }
+
+        if (capNotice) {
+          html += `
+            <div class="fixed inset-0 z-[70] bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
+              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 shadow-2xl space-y-3">
+                <p class="text-sm font-bold text-[#2D3436] leading-relaxed">오늘은 여기까지 들을게요. 마음이 아직 남았다면 내일 다시 이야기해 주세요.</p>
+                <button type="button" data-action="cap-ok" class="w-full py-2.5 rounded-xl bg-[#FF8A80] text-white text-xs font-extrabold">알겠어요</button>
               </div>
             </div>
           `;
@@ -1618,6 +1640,11 @@
               res = localFallback(text, role);
             }
             state.botTyping = false;
+            if (res && res.capped) {
+              capNotice = true;
+              render();
+              return;
+            }
             state.chats[role].push({
               id: 'b-' + Date.now(),
               sender: 'bot',
@@ -1781,6 +1808,9 @@
           hideToast();
           state.showLogoutConfirm = true;
           render();
+        } else if (action === 'cap-ok') {
+          capNotice = false;
+          render();
         } else if (action === 'logout-cancel') {
           state.showLogoutConfirm = false;
           render();
@@ -1874,6 +1904,7 @@
           if (await refreshPaywall(true)) render();
           if (reportVisible()) logEvent(state.report.paid ? 'report_view' : 'paywall_view');
         } else if (action === 'pay-open') {
+          if (state.report && state.report.posts_ready !== true) return;
           if (!reportVisible() || state.report.paid) return;
           if (!state.report.pay_code) {
             if (state.busy) return;
@@ -1910,7 +1941,16 @@
           const r = await sbFetchQuiet('rpc/consent_secret_report', { method: 'POST', body: '{}' });
           if (r && r.consented === true) {
             try { localStorage.setItem(secretInfoKey(), '1'); } catch (_e) {}
+            if (state.paywall) state.paywall.report_consent = true;
           }
+        } else if (action === 'withdraw-secret-report') {
+          // [확인했어요] 끄기: 서버에서 동의·주제 키를 지우면 비밀방 안내 카드가 다시 뜬다
+          const r = await sbFetchQuiet('rpc/withdraw_secret_report', { method: 'POST', body: '{}' });
+          if (!r || r.consented !== false) { showToast('잠시 후 다시 시도해 주세요'); return; }
+          if (state.paywall) state.paywall.report_consent = false;
+          secretInfoAcked = false;
+          try { localStorage.removeItem(secretInfoKey()); } catch (_e) {}
+          render();
         } else if (action === 'secret-info-toggle') {
           state.secretInfoOpen = !state.secretInfoOpen;
           render();

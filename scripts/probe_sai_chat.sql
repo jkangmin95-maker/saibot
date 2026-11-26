@@ -1,6 +1,6 @@
 -- Prints what public.sai_chat sends to Gemini for a fixed couple + messages, and an md5 of its source.
 -- Used by scripts/run_local_sql_tests.sh to prove: v11 with the flag OFF sends byte-for-byte the same request as v9.1,
--- and v11 down restores the exact v9.1 function. Everything is rolled back. The key below is a fake placeholder.
+-- and v11 down restores the exact v9.1 sai_chat and v9 generate_mission. Everything is rolled back. The key below is a fake placeholder.
 \set ON_ERROR_STOP 1
 \pset tuples_only on
 \pset format unaligned
@@ -24,4 +24,5 @@ select 'RESULT ' || :'out';
 select 'BODY ' || regexp_replace(body, 'S2-[A-Z0-9]+', 'S2-CODE', 'g') from t_http where n = (select min(n) from t_http);
 select 'ATTEMPTS ' || count(*) from t_http;
 select 'SRC ' || md5(prosrc) || ' ' || coalesce(array_to_string(proconfig, ','), '') || ' ' || prosecdef from pg_proc where proname = 'sai_chat';
+select 'SRC generate_mission ' || md5(prosrc) || ' ' || coalesce(array_to_string(proconfig, ','), '') || ' ' || prosecdef from pg_proc where proname = 'generate_mission';
 rollback;

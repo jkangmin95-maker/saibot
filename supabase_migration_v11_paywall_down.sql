@@ -1,5 +1,6 @@
--- Rollback for supabase_migration_v11_paywall.sql. Deletes the paywall config, every couple's 결제 확인 코드 / paid flag,
--- every 비밀방 [확인했어요] record and every stored 비밀방 topic key.
+-- Rollback for supabase_migration_v11_paywall.sql. Deletes the paywall config, every couple's 결제 확인 코드 / 30-day passes,
+-- every 비밀방 [확인했어요] record, every stored 비밀방 topic key, frozen report and 비밀방 AI usage counter.
+-- Also restores the exact v9 public.generate_mission (v11 added the per-user AI cap to it).
 -- Restores the exact v9.1 public.sai_chat body and the v10 log_event (v10 events only). v10 tables and data are untouched.
 begin;
 -- exact v9.1 sai_chat (copied verbatim from supabase_migration_v9_chat.sql; v9.1 did not change it)
@@ -147,12 +148,88 @@ grant execute on function public.sai_chat(text, jsonb) to authenticated;
 drop function if exists public.consent_secret_report();
 drop function if exists public.my_report();
 drop function if exists public.request_pay_code();
+-- exact v9 generate_mission (copied verbatim from supabase_migration_v9_chat.sql; v9.1 did not change it)
+create or replace function public.generate_mission(feeling text, couple_code text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, vault, extensions
+set statement_timeout = '24s'
+as $fn$
+#variable_conflict use_column
+declare
+  v_code text;
+  v_count integer;
+  v_parsed jsonb;
+  v_today date := (timezone('Asia/Seoul', now()))::date;
+begin
+  if feeling is null or length(btrim(feeling)) = 0 or length(feeling) > 500 then
+    return null;
+  end if;
+  if couple_code is null or length(btrim(couple_code)) = 0 or length(couple_code) > 32 then
+    return null;
+  end if;
+  v_code := btrim(couple_code);
+  if auth.uid() is null or not public.is_couple_member(v_code) then
+    return null;
+  end if;
+
+  insert into public.mission_gen_usage as u(couple_code, day, call_count)
+  values (v_code, v_today, 1)
+  on conflict on constraint mission_gen_usage_pkey
+  do update set call_count = u.call_count + 1
+  where u.call_count < 30
+  returning u.call_count into v_count;
+  if v_count is null then
+    return null;
+  end if;
+
+  v_parsed := private.gemini_json(jsonb_build_object(
+    'contents', jsonb_build_array(jsonb_build_object('role', 'user', 'parts', jsonb_build_array(jsonb_build_object('text',
+      '당신은 커플 관계 코칭 AI ''사이봇''입니다. 한 사람이 연인에게 서운하거나 아쉬운 마음을 비밀로 털어놓았습니다.' || E'\n' ||
+      private.couple_context(v_code) || E'\n' ||
+      '털어놓은 말: ' || btrim(feeling) || E'\n' ||
+      '반드시 다음 JSON만 출력하세요: {"empathy":"...","title":"...","message":"..."}' || E'\n' ||
+      '1) empathy: 털어놓은 사람이 쓴 말과 상황을 구체적으로 짚어 공감하는 1~2문장(본인만 봄). 뻔한 템플릿 금지.' || E'\n' ||
+      '2) title: 상대방에게 보낼 데일리 미션 제목(15자 이내).' || E'\n' ||
+      '3) message: 앱이 연인에게 보내는 오늘의 추천 미션 1~2문장, 해요체. "상대방에게 ~해 주세요" 형식으로 연인에게 직접 말하고, 털어놓은 사람은 이름 대신 ''상대방''이라고 부르세요. 불만·서운함·과거의 잘못은 절대 언급하지 말고, 마음이 풀리는 방향의 오늘 할 수 있는 구체적인 다정한 행동. 최근 보낸 미션과 겹치지 않게.'
+    )))),
+    'generationConfig', jsonb_build_object(
+      'temperature', 1.0,
+      'maxOutputTokens', 600,
+      'responseMimeType', 'application/json',
+      'thinkingConfig', jsonb_build_object('thinkingLevel', 'minimal')
+    )
+  ));
+
+  if v_parsed is null or coalesce(v_parsed->>'empathy', '') = '' or coalesce(v_parsed->>'message', '') = '' then
+    return null;
+  end if;
+  return jsonb_build_object(
+    'empathy', left(v_parsed->>'empathy', 500),
+    'title', left(coalesce(nullif(v_parsed->>'title', ''), '오늘의 다정함 미션'), 40),
+    'message', left(v_parsed->>'message', 500)
+  );
+exception when others then
+  return null;
+end;
+$fn$;
+
+revoke all on function public.generate_mission(text, text) from public, anon;
+grant execute on function public.generate_mission(text, text) to authenticated;
+drop function if exists public.withdraw_secret_report();
+drop function if exists private.take_secret_ai_call();
+drop function if exists private.secret_ai_daily_cap();
+drop function if exists private.recompute_paid_until(text);
 drop function if exists public.get_paywall_config();
 drop function if exists private.set_couple_paid(text, boolean, text, text);
 drop function if exists private.new_pay_code();
 drop function if exists private.record_secret_topic(text, text);
 drop function if exists private.secret_topic(text);
 drop function if exists private.paywall_on();
+drop table if exists private.secret_ai_usage;
+drop table if exists private.report_snapshots;
+drop table if exists private.couple_passes;
 drop table if exists private.secret_topic_tags;
 drop table if exists private.secret_report_consents;
 drop table if exists private.couple_entitlements;
