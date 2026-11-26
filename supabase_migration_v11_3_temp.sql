@@ -4,7 +4,7 @@
 -- Rollback: supabase_migration_v11_3_temp_down.sql. Tests: scripts/test_v11_3.sql (scripts/run_local_sql_tests_v11_3.sh)
 --
 -- Security model
--- * New tables live in schema private (no usage for anon/authenticated), RLS on, no policies, nothing granted:
+-- * New tables live in schema private (also private.mission_sources, private.gratitude_senders) (no usage for anon/authenticated), RLS on, no policies, nothing granted:
 --     private.temp_config        one row (id = 1): every weight / threshold of the formula
 --     private.temp_answers       one row per (couple, user, round): 10 answers 0/1/2 + who the partner was at answer time
 --     private.temp_measurements  one row per (couple, round): the two members + total + 4 area temperatures (the ONLY place
@@ -27,7 +27,17 @@
 --                     grace_days after delivery). Missions = public.daily_missions of the couple + both members'
 --                     private.self_missions, counted identically (source never used, never returned).
 --     total = base + span * all points/40 + the same bonuses - penalty, clamped to [min_temp, max_temp], 1 decimal.
--- * Nothing here reads public.secret_emotions or any 비밀방 table. couples.warmth_temp is not read or written. No dynamic SQL.
+--     Only activity of the CURRENT two members counts (by user id, not couple_code + role): gratitude_senders.user_id,
+--     daily_missions.sender_id + target_id (both must be one of the two), self_missions.user_id. These id columns are
+--     stamped by triggers from auth.uid() / the seat at insert time and can't be changed by clients. Older rows (no ids)
+--     are not counted; instead the FIRST measurement of a pair is floored at couples.warmth_temp (what home showed before
+--     measuring), so nobody drops on their first measurement. warmth_temp is only READ, only in submit_temp, only for
+--     that floor; it is never written here.
+-- * 비밀방 source: public.send_secret_mission() (the 신호 보내기 button) inserts the partner's mission and records
+--     private.mission_sources(source = 'secret'), only if the couple used 사이봇 (sai_chat / generate_mission usage)
+--     today or yesterday (KST). create_self_mission() requires such a 'secret' mission sent by the caller in the last
+--     10 minutes. mission_sources is never used for scoring and never returned.
+-- * Nothing here reads public.secret_emotions. No dynamic SQL.
 
 begin;
 
@@ -97,12 +107,76 @@ create table if not exists private.self_missions (
   unique (couple_code, user_id, created_on)
 );
 
+create table if not exists private.mission_sources (
+  mission_id text primary key references public.daily_missions(id) on delete cascade,
+  couple_code text not null references public.couples(code) on delete cascade,
+  sender_id uuid not null,
+  source text not null check (source in ('secret')),
+  created_at timestamptz not null default now()
+);
+
+-- who did it, by user id (re-pair safe counting). Stamped server-side; clients cannot set or change them.
+-- gratitude_sends (v10.4) stays as is; who sent it lives in a side table filled by a trigger
+create table if not exists private.gratitude_senders (
+  couple_code text not null,
+  sender_role text not null,
+  sent_on date not null,
+  user_id uuid not null,
+  primary key (couple_code, sender_role, sent_on),
+  foreign key (couple_code, sender_role, sent_on) references private.gratitude_sends(couple_code, sender_role, sent_on) on delete cascade on update cascade
+);
+alter table public.daily_missions add column if not exists sender_id uuid;
+alter table public.daily_missions add column if not exists target_id uuid;
+
+create or replace function private.stamp_gratitude_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+begin
+  if auth.uid() is not null then
+    insert into private.gratitude_senders(couple_code, sender_role, sent_on, user_id)
+    values (new.couple_code, new.sender_role, new.sent_on, auth.uid())
+    on conflict do nothing;
+  end if;
+  return null;
+end
+$fn$;
+drop trigger if exists temp_stamp_user on private.gratitude_sends;
+create trigger temp_stamp_user after insert on private.gratitude_sends
+  for each row execute function private.stamp_gratitude_user();
+
+create or replace function private.stamp_mission_ids()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+begin
+  if tg_op = 'INSERT' then
+    new.sender_id := auth.uid();
+    new.target_id := (select case new.target_role when 'A' then c.user_a when 'B' then c.user_b end
+                        from public.couples c where c.code = new.couple_code);
+  else
+    new.sender_id := old.sender_id;
+    new.target_id := old.target_id;
+  end if;
+  return new;
+end
+$fn$;
+drop trigger if exists temp_stamp_ids on public.daily_missions;
+create trigger temp_stamp_ids before insert or update on public.daily_missions
+  for each row execute function private.stamp_mission_ids();
+
+alter table private.mission_sources enable row level security;
+alter table private.gratitude_senders enable row level security;
 alter table private.temp_config enable row level security;
 alter table private.temp_answers enable row level security;
 alter table private.temp_measurements enable row level security;
 alter table private.self_missions enable row level security;
-revoke all on table private.temp_config, private.temp_answers, private.temp_measurements, private.self_missions
-  from public, anon, authenticated;
+revoke all on table private.temp_config, private.temp_answers, private.temp_measurements, private.self_missions,
+  private.mission_sources, private.gratitude_senders from public, anon, authenticated;
 
 -- area texts (『긍정학개론』). Order = app TEMP_QS themes: 1 고마움 (Q1-2), 2 그럴 수 있지 (Q3-5), 3 고정관념 내려놓기 (Q6-8), 4 책임 (Q9-10)
 create or replace function private.temp_areas_json(p_temps numeric[])
@@ -111,17 +185,17 @@ language sql
 immutable
 set search_path = public, pg_temp
 as $fn$
-  select jsonb_agg(jsonb_build_object('key', a.key, 'label', a.label, 'temp', p_temps[a.i], 'why', a.why, 'todo', a.todo) order by a.i)
+  select jsonb_agg(jsonb_build_object('key', a.key, 'label', a.label, 'temp', p_temps[a.i], 'why', a.why, 'cite', a.cite, 'todo', a.todo) order by a.i)
   from (values
-    (1, 'gratitude', '고마움', '감사하다고 말해야 감사한 것이 돼요. 마음은 말로 꺼낼 때 커져요.',
+    (1, 'gratitude', '고마움', '감사하다고 말해야 감사한 것이 돼요. 마음은 말로 꺼낼 때 커져요.', null,
         '자기 전에 오늘 고마웠던 일 하나를 말로 전해 보기'),
-    (2, 'okay', '그럴 수 있지', '서운한 감정은 떠오를 수 있지만, 붙잡는 건 선택이에요. "그럴 수 있지"는 나를 지키는 말이에요.',
+    (2, 'okay', '그럴 수 있지', '서운한 감정은 떠오를 수 있지만, 붙잡는 건 선택이에요. "그럴 수 있지"는 나를 지키는 말이에요.', null,
         '서운한 순간이 오면 "그럴 수 있지"를 먼저 말해 보기'),
-    (3, 'open', '고정관념 내려놓기', '괴로움은 "당연히 이래야지"라는 내 고정관념에서 시작돼요. 내려놓으면 다툴 일이 줄어요.',
+    (3, 'open', '고정관념 내려놓기', '괴로움은 "당연히 이래야지"라는 내 고정관념에서 시작돼요. 내려놓으면 다툴 일이 줄어요.', null,
         '"당연히"라는 말이 나오면 "그럴 수도 있지"로 바꿔 말해 보기'),
-    (4, 'resp', '책임', '모든 것은 나로부터 비롯되고, 마음은 행동으로 증명돼요. 내가 먼저 하면 관계가 움직여요.',
+    (4, 'resp', '책임', '모든 것은 나로부터 비롯되고, 마음은 행동으로 증명돼요. 내가 먼저 하면 관계가 움직여요.', '도서 『긍정학개론』 중에서',
         '연인에게 바라는 것 하나를 내가 먼저 해 보기')
-  ) as a(i, key, label, why, todo)
+  ) as a(i, key, label, why, cite, todo)
 $fn$;
 
 create or replace function public.my_temp()
@@ -238,17 +312,20 @@ begin
     if last.round is not null then
       v_start := last.measured_at;
       v_start_day := (v_start at time zone 'Asia/Seoul')::date;
-      select count(*) into v_grat from private.gratitude_sends where couple_code = c.code and sent_on > v_start_day;
+      select count(*) into v_grat from private.gratitude_senders
+       where couple_code = c.code and user_id in (v_uid, v_partner) and sent_on > v_start_day;
     else
       v_start := greatest(c.created_at, now() - make_interval(days => cfg.first_window_days));
       v_start_day := (v_start at time zone 'Asia/Seoul')::date;
-      select count(*) into v_grat from private.gratitude_sends where couple_code = c.code and sent_on >= v_start_day;
+      select count(*) into v_grat from private.gratitude_senders
+       where couple_code = c.code and user_id in (v_uid, v_partner) and sent_on >= v_start_day;
     end if;
     -- missions: couple missions + both members' self missions, the same rule for both
     select count(*) filter (where done), count(*) filter (where missed) into v_done, v_miss from (
       select d.accepted and d.accepted_at > v_start and d.accepted_at <= now() as done,
              not d.accepted and d.created_at > v_start and d.created_at <= now() - make_interval(days => cfg.grace_days) as missed
         from public.daily_missions d where d.couple_code = c.code
+         and d.sender_id in (v_uid, v_partner) and d.target_id in (v_uid, v_partner) and d.sender_id <> d.target_id
       union all
       select s.accepted and s.accepted_at > v_start and s.accepted_at <= now(),
              not s.accepted and s.created_at > v_start and s.created_at <= now() - make_interval(days => cfg.grace_days)
@@ -268,6 +345,10 @@ begin
     v_areas[4] := v_areas[4] + v_m - v_pen;
     for k in 1..4 loop v_areas[k] := round(least(cfg.max_temp, greatest(cfg.min_temp, v_areas[k])), 1); end loop;
     v_total := round(least(cfg.max_temp, greatest(cfg.min_temp, cfg.base + cfg.span * v_all / 40.0 + v_g + v_m - v_pen)), 1);
+    -- first measurement of this pair: never below what home showed before measuring (read-only use of warmth_temp)
+    if last.round is null then
+      v_total := greatest(v_total, round(least(cfg.max_temp, coalesce(c.warmth_temp, 0)), 1));
+    end if;
     insert into private.temp_measurements(couple_code, round, member_1, member_2, total, areas)
     values (c.code, v_round, least(v_uid, v_partner), greatest(v_uid, v_partner), v_total, v_areas)
     on conflict do nothing;
@@ -321,9 +402,11 @@ begin
   if not found then raise exception 'couple_not_found' using errcode = 'P0002'; end if;
   if c.user_a is null or c.user_b is null then raise exception 'partner_not_joined' using errcode = 'P0001'; end if;
   v_role := case when c.user_a = v_uid then 'A' else 'B' end;
-  if not exists (select 1 from public.daily_missions d where d.couple_code = c.code
-                   and d.target_role = case when v_role = 'A' then 'B' else 'A' end
-                   and d.created_at > now() - interval '10 minutes') then
+  -- the caller must have just sent a 비밀방 mission to the current partner (server-recorded source, not any mission)
+  if not exists (select 1 from private.mission_sources ms join public.daily_missions d on d.id = ms.mission_id
+                  where ms.couple_code = c.code and ms.source = 'secret' and ms.sender_id = v_uid
+                    and d.target_id = case when v_role = 'A' then c.user_b else c.user_a end
+                    and ms.created_at > now() - interval '10 minutes') then
     raise exception 'no_recent_mission' using errcode = 'P0001';
   end if;
   select * into s from private.self_missions where couple_code = c.code and user_id = v_uid
@@ -332,7 +415,7 @@ begin
     select count(*) into v_n from private.self_missions where couple_code = c.code and user_id = v_uid;
     v_k := (v_n % 4) + 1;
     insert into private.self_missions(id, couple_code, user_id, title, message)
-    values ('m-' || floor(extract(epoch from clock_timestamp()) * 1000)::bigint::text, c.code, v_uid, v_title[v_k], v_msg[v_k])
+    values (gen_random_uuid()::text, c.code, v_uid, v_title[v_k], v_msg[v_k])
     on conflict do nothing
     returning * into s;
     if s.id is null then
@@ -345,6 +428,48 @@ end
 $fn$;
 revoke all on function public.create_self_mission() from public, anon, authenticated;
 grant execute on function public.create_self_mission() to authenticated;
+
+-- 사이봇 비밀방 "신호 보내기": the partner's mission + its source. Same row shape as the old direct insert.
+create or replace function public.send_secret_mission(p_id text, p_title text, p_badge text, p_message text)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  v_uid uuid := auth.uid();
+  c public.couples;
+  v_role text;
+  v_today date := (now() at time zone 'Asia/Seoul')::date;
+  d public.daily_missions;
+begin
+  if v_uid is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
+  select * into c from public.couples where user_a = v_uid or user_b = v_uid order by created_at limit 1;
+  if not found then raise exception 'couple_not_found' using errcode = 'P0002'; end if;
+  if c.user_a is null or c.user_b is null then raise exception 'partner_not_joined' using errcode = 'P0001'; end if;
+  if p_id is null or p_id !~ '^m-[0-9]{10,16}$'
+     or coalesce(length(btrim(p_title)), 0) not between 1 and 80
+     or coalesce(length(btrim(p_message)), 0) not between 1 and 600
+     or coalesce(length(p_badge), 0) > 40 then
+    raise exception 'bad_mission' using errcode = '22023';
+  end if;
+  -- 사이봇 was used by this couple today / yesterday (KST): the mission draft came from 비밀방
+  if not exists (select 1 from public.sai_chat_usage u where u.couple_code = c.code and u.day >= v_today - 1 and u.call_count > 0)
+     and not exists (select 1 from public.mission_gen_usage u where u.couple_code = c.code and u.day >= v_today - 1 and u.call_count > 0) then
+    raise exception 'no_saibot_use' using errcode = 'P0001';
+  end if;
+  v_role := case when c.user_a = v_uid then 'A' else 'B' end;
+  insert into public.daily_missions(id, couple_code, target_role, title, badge, message, accepted)
+  values (p_id, c.code, case when v_role = 'A' then 'B' else 'A' end, btrim(p_title),
+          coalesce(nullif(btrim(p_badge), ''), '오늘의 커플 추천 팁'), btrim(p_message), false)
+  returning * into d;
+  insert into private.mission_sources(mission_id, couple_code, sender_id, source) values (d.id, c.code, v_uid, 'secret');
+  return jsonb_build_object('id', d.id, 'target_role', d.target_role, 'created_at', d.created_at);
+end
+$fn$;
+revoke all on function public.send_secret_mission(text, text, text, text) from public, anon, authenticated;
+grant execute on function public.send_secret_mission(text, text, text, text) to authenticated;
 
 -- the caller's own self missions in the current couple (newest 30). The partner never gets these.
 create or replace function public.my_self_missions()
@@ -401,6 +526,8 @@ grant execute on function public.accept_self_mission(text) to authenticated;
 -- helpers in private: not callable by the API roles (no schema usage) and no EXECUTE either
 revoke all on function private.temp_areas_json(numeric[]) from public, anon, authenticated;
 revoke all on function private.self_mission_json(private.self_missions, text) from public, anon, authenticated;
+revoke all on function private.stamp_gratitude_user() from public, anon, authenticated;
+revoke all on function private.stamp_mission_ids() from public, anon, authenticated;
 
 commit;
 notify pgrst, 'reload schema';

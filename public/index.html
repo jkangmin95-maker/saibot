@@ -742,7 +742,7 @@
       let comboImage = { key: '', url: '', blob: null, busy: false };
 
       function comboShareText(info) {
-        return info.name + '\n우리의 다정함 온도 ' + info.temp + '°C\n함께 달성한 다정함 미션 ' + info.count + '회';
+        return info.name + '\n' + (tempOn() ? '우리사이 온도 ' : '우리의 다정함 온도 ') + info.temp + '°C\n함께 달성한 다정함 미션 ' + info.count + '회';
       }
 
       function copyText(t) {
@@ -819,7 +819,7 @@
         ctx.fillStyle = '#FF8A80'; ctx.font = '800 96px ' + CARD_FONT; ctx.fillText('×', 540, 715);
         ctx.fillStyle = '#2D3436'; ctx.font = '800 88px ' + CARD_FONT; ctx.fillText(info.b.name, 540, 860);
         ctx.fillStyle = '#636E72'; ctx.font = '500 38px ' + CARD_FONT; ctx.fillText(info.b.desc, 540, 932);
-        ctx.fillStyle = '#2D3436'; ctx.font = '800 58px ' + CARD_FONT; ctx.fillText('우리의 다정함 온도 ' + info.temp + '°C', 540, 1120);
+        ctx.fillStyle = '#2D3436'; ctx.font = '800 58px ' + CARD_FONT; ctx.fillText((tempOn() ? '우리사이 온도 ' : '우리의 다정함 온도 ') + info.temp + '°C', 540, 1120);
         roundRect(ctx, 200, 1172, 680, 28, 14); ctx.fillStyle = '#FFF0EE'; ctx.fill();
         const pct = Math.min(100, Math.max(12, ((Number(info.temp) - 35) / 10) * 100)) / 100;
         const bar = ctx.createLinearGradient(200, 0, 880, 0);
@@ -1266,7 +1266,7 @@
               <div class="flex items-center justify-between">
                 <div>
                   <p class="text-[11px] font-semibold text-white/85">${esc(state.myName)} ♥ ${esc(state.partnerName)} · 코드 ${esc(state.coupleCode)}</p>
-                  <p class="text-base font-extrabold mt-0.5">우리의 다정함 온도 <span data-mission-warmth-num>${shownTemp().toFixed(1)}°C</span></p>
+                  <p class="text-base font-extrabold mt-0.5">${tempOn() ? '우리사이 온도' : '우리의 다정함 온도'} <span data-mission-warmth-num>${shownTemp().toFixed(1)}°C</span></p>
                 </div>
                 <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-extrabold text-sm">
                   ${state.completedCount}회
@@ -1508,7 +1508,7 @@
                 <span class="absolute left-[27px] translate-y-1/2 text-[10px] leading-none text-[#B2BEC3]" style="bottom:${32 + 0.86 * warmthPct(45)}px">45</span>
               </div>
               <div class="flex-1 min-w-0 text-center">
-                <p class="text-xs font-bold text-[#FF8A80]">우리 커플 다정함 리포트</p>
+                <p class="text-xs font-bold text-[#FF8A80]">${tempOn() ? '우리사이 온도' : '우리 커플 다정함 리포트'}</p>
                 <p class="text-4xl font-extrabold text-[#2D3436] mt-2" data-warmth-num>${shownTemp().toFixed(1)}°C</p>
                 <p class="text-xs text-[#636E72] mt-1"${tempDaysLeft() > 0 ? ' data-temp-next' : ''}>${tempDaysLeft() > 0 ? '다음 측정까지 ' + tempDaysLeft() + '일' : '함께 달성한 다정함 미션 ' + state.completedCount + '회'}</p>
               </div>
@@ -1653,7 +1653,7 @@
       function renderTempTabCard() {
         if (!state.partnerJoined || !state.temp) return '';
         const done = state.temp.status === 'done';
-        const label = done ? (tempNextLabel() || '측정 완료') : (tempLast() && state.temp.status === 'not_started' ? '다시 재 보기' : '같이 재 보기');
+        const label = done ? (tempNextLabel() ? tempNextLabel() + '에 다시 재요' : '측정 완료') : (tempLast() && state.temp.status === 'not_started' ? '다시 재 보기' : '같이 재 보기');
         const cls = done
           ? 'w-full py-2.5 rounded-xl bg-[#EEF1F2] text-[#9AA5A9] text-xs font-extrabold transition-all'
           : 'w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all';
@@ -1690,7 +1690,7 @@
                   ${tempProgress(i + 1)}
                   <h2 class="text-lg font-extrabold text-[#2D3436] text-center pt-2 pb-1">${esc(item.q)}</h2>
                   <div class="space-y-2.5">
-                    ${item.o.map((label, k) => `<button type="button" data-action="temp-answer" data-i="${k}" class="w-full py-3.5 px-4 rounded-2xl bg-[#FFF9F5] hover:bg-[#FFF0EE] border border-[#FF8A80]/30 text-sm font-bold text-[#2D3436] transition-colors">${esc(label)}</button>`).join('')}
+                    ${item.o.map((label, k) => `<button type="button" data-action="temp-answer" data-i="${k}" class="w-full py-3.5 px-4 rounded-2xl bg-[#FFF9F5] active:bg-[#FFF0EE] border border-[#FF8A80]/30 text-sm font-bold text-[#2D3436] transition-colors">${esc(label)}</button>`).join('')}
                   </div>
                 </div>`;
         } else if (v === 'wait') {
@@ -1715,6 +1715,7 @@
                         <div class="h-full bg-gradient-to-r from-[#FFAB91] to-[#FF8A80] rounded-full" style="width:${warmthPct(Number.isFinite(t) ? t : 35)}%"></div>
                       </div>
                       <p class="text-[13px] text-[#4A5568] leading-relaxed mt-2">${esc(a.why)}</p>
+                      ${a.cite ? `<p class="text-[12px] text-[#9AA5A9] mt-0.5" data-temp-cite>${esc(a.cite)}</p>` : ''}
                       <p class="text-[11px] font-bold text-[#FF8A80] mt-2.5">이번에 해 볼 일</p>
                       <p class="text-sm font-extrabold text-[#2D3436] mt-0.5">${esc(a.todo)}</p>
                     </div>`;
@@ -2145,7 +2146,17 @@
             accepted: false
           };
           try {
-            await sbFetch('daily_missions', {
+            // v11.3: 서버가 비밀방 출처를 기록하는 RPC. 실패하면 예전처럼 직접 넣는다
+            let viaRpc = false;
+            if (tempOn()) {
+              try {
+                await rpc('send_secret_mission', { p_id: missionId, p_title: draft.title, p_badge: draft.badge || '', p_message: draft.message });
+                viaRpc = true;
+              } catch (_e) {
+                // 함수가 없거나 서버가 거절하면(no_saibot_use 등) 미션은 예전처럼 보낸다 (셀프 미션만 안 생김)
+              }
+            }
+            if (!viaRpc) await sbFetch('daily_missions', {
               method: 'POST',
               body: JSON.stringify({
                 id: missionId,
@@ -2180,7 +2191,7 @@
               selfM.accepted = Boolean(r && r.accepted);
               selfM.accepting = false;
               render();
-              showToast('다정함 스탬프 완료! 다음에 잴 때 온도에 담겨요 💛');
+              showToast('미션 완료! 다음에 잴 때 온도에 담겨요 💛');
             } catch (_e) {
               selfM.accepting = false; selfM.accepted = false; render();
               showToast('잠시 후 다시 시도해 주세요');
@@ -2224,7 +2235,7 @@
             mission.accepting = false;
             saveState();
             render();
-            showToast('다정함 스탬프 완료! 다음에 잴 때 온도에 담겨요 💛');
+            showToast('미션 완료! 다음에 잴 때 온도에 담겨요 💛');
           } catch (_e) {
             mission.accepting = false;
             mission.accepted = false;

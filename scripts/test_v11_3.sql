@@ -16,6 +16,19 @@ create or replace function pg_temp.as_user(p_uid text) returns void language sql
 create or replace function pg_temp.u(n int) returns uuid language sql as $$ select ('f1000000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid $$;
 create or replace function pg_temp.a(v int[]) returns smallint[] language sql as $$ select v::smallint[] $$;
 create temp table t_v(k text primary key, v jsonb);
+-- fixtures written "as" a user, so the id-stamping triggers fill sender_id / target_id / user_id like the app would
+create or replace function pg_temp.dm(p_id text, p_code text, p_target text, p_sender int, p_acc boolean, p_acc_at timestamptz, p_created timestamptz)
+returns void language plpgsql as $$ begin
+  perform set_config('request.jwt.claims', json_build_object('sub', pg_temp.u(p_sender), 'role', 'authenticated')::text, true);
+  insert into public.daily_missions(id, couple_code, target_role, title, message, accepted, accepted_at, created_at)
+  values (p_id, p_code, p_target, 't', 'm', p_acc, p_acc_at, p_created);
+  perform set_config('request.jwt.claims', '{}', true);
+end $$;
+create or replace function pg_temp.gr(p_code text, p_role text, p_day date, p_uid int) returns void language plpgsql as $$ begin
+  perform set_config('request.jwt.claims', json_build_object('sub', pg_temp.u(p_uid), 'role', 'authenticated')::text, true);
+  insert into private.gratitude_sends(couple_code, sender_role, sent_on) values (p_code, p_role, p_day);
+  perform set_config('request.jwt.claims', '{}', true);
+end $$;
 grant all on t_v to anon, authenticated;
 grant execute on all functions in schema pg_temp to anon, authenticated;
 -- shape: only status/days_left/next_on/last; last only total/measured_on/areas; area only key/label/temp/why/todo
@@ -24,7 +37,7 @@ create or replace function pg_temp.shape_ok(v jsonb) returns boolean language sq
     and (jsonb_typeof(v->'last') = 'null' or (
       (select array_agg(k order by k) from jsonb_object_keys(v->'last') k) = array['areas', 'measured_on', 'total']
       and jsonb_array_length(v->'last'->'areas') = 4
-      and (select bool_and((select array_agg(k order by k) from jsonb_object_keys(e) k) = array['key', 'label', 'temp', 'todo', 'why'])
+      and (select bool_and((select array_agg(k order by k) from jsonb_object_keys(e) k) = array['cite', 'key', 'label', 'temp', 'todo', 'why'])
              from jsonb_array_elements(v->'last'->'areas') e)))
     and not (v::text ~* '"(answers|mine|partner|round|grat|missions?|done|miss|self|source|secret|warmth_temp)" *:') $$;
 create or replace function pg_temp.temps(v jsonb) returns numeric[] language sql as $$
@@ -32,6 +45,9 @@ create or replace function pg_temp.temps(v jsonb) returns numeric[] language sql
 grant execute on all functions in schema pg_temp to authenticated;
 
 -- ---------- privileges / settings ----------
+select pg_temp.ok('gratitude_senders: RLS on, no grants',
+  (select relrowsecurity from pg_class where oid = 'private.gratitude_senders'::regclass)
+  and not exists (select 1 from information_schema.role_table_grants where table_schema = 'private' and table_name = 'gratitude_senders' and grantee in ('anon', 'authenticated', 'PUBLIC')));
 select pg_temp.ok('4 new tables in private: RLS on, no policies',
   (select count(*) from pg_class where oid in ('private.temp_config'::regclass, 'private.temp_answers'::regclass,
      'private.temp_measurements'::regclass, 'private.self_missions'::regclass) and relrowsecurity) = 4
@@ -54,9 +70,16 @@ select pg_temp.ok('execute: authenticated yes, anon no, PUBLIC no (all 5)',
 select pg_temp.ok('private helpers: no EXECUTE for anon / authenticated / PUBLIC',
   (select bool_and(not has_function_privilege('authenticated', p.oid, 'EXECUTE') and not has_function_privilege('anon', p.oid, 'EXECUTE'))
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'private' and p.proname in ('temp_areas_json', 'self_mission_json')));
-select pg_temp.ok('no function reads secret_emotions / sai_chat / warmth_temp',
-  not exists (select 1 from pg_proc where proname in ('my_temp', 'submit_temp', 'create_self_mission', 'my_self_missions', 'accept_self_mission', 'temp_areas_json', 'self_mission_json')
-    and (prosrc ilike '%secret%' or prosrc ilike '%sai_chat%' or prosrc ilike '%warmth%')));
+select pg_temp.ok('no function reads secret_emotions; none writes couples; only submit_temp mentions warmth_temp (floor read)',
+  not exists (select 1 from pg_proc where proname in ('my_temp', 'submit_temp', 'create_self_mission', 'my_self_missions', 'accept_self_mission', 'send_secret_mission', 'temp_areas_json', 'self_mission_json', 'stamp_mission_ids', 'stamp_gratitude_user')
+    and (prosrc ilike '%secret_emotions%' or prosrc ~* 'update\s+public\.couples'))
+  and (select array_agg(proname::text) from pg_proc where prosrc ilike '%warmth_temp%' and proname in ('my_temp', 'submit_temp', 'create_self_mission', 'my_self_missions', 'accept_self_mission', 'send_secret_mission', 'temp_areas_json', 'self_mission_json', 'stamp_mission_ids', 'stamp_gratitude_user')) = array['submit_temp']);
+select pg_temp.ok('mission_sources: private, RLS on, no grants',
+  (select relrowsecurity from pg_class where oid = 'private.mission_sources'::regclass)
+  and not exists (select 1 from information_schema.role_table_grants where table_schema = 'private' and table_name = 'mission_sources' and grantee in ('anon', 'authenticated', 'PUBLIC')));
+select pg_temp.ok('send_secret_mission: SECURITY DEFINER, pinned path, authenticated only',
+  (select prosecdef and array_to_string(proconfig, ',') = 'search_path=public, pg_temp' and has_function_privilege('authenticated', oid, 'EXECUTE')
+     and not has_function_privilege('anon', oid, 'EXECUTE') from pg_proc where oid = 'public.send_secret_mission(text, text, text, text)'::regprocedure));
 select pg_temp.ok('only submit_temp inserts into temp_measurements',
   (select array_agg(proname::text) from pg_proc where prosrc ilike '%into private.temp_measurements%') = array['submit_temp']);
 select pg_temp.ok('config: one row with the default weights',
@@ -68,12 +91,12 @@ select pg_temp.ok('config: one row with the default weights',
 insert into auth.users(id) select pg_temp.u(n) from generate_series(1, 20) n;
 insert into public.couples(code, user_a, user_b, name_a, name_b, warmth_temp, created_at) values
   ('TC-C1', pg_temp.u(1), pg_temp.u(2), '지수', '민준', 39.4, now() - interval '100 days'),
-  ('TC-C2', pg_temp.u(3), pg_temp.u(4), '하나', '도윤', 37.5, now() - interval '100 days'),
+  ('TC-C2', pg_temp.u(3), pg_temp.u(4), '하나', '도윤', 30.0, now() - interval '100 days'),
   ('TC-C3', pg_temp.u(7), pg_temp.u(8), null, null, 44.9, now() - interval '100 days'),
   ('TC-C4', pg_temp.u(9), pg_temp.u(10), null, null, 30.0, now() - interval '100 days'),
-  ('TC-C5', pg_temp.u(11), pg_temp.u(12), null, null, 37.5, now() - interval '100 days'),
-  ('TC-C6', pg_temp.u(13), pg_temp.u(14), null, null, 37.5, now() - interval '100 days'),
-  ('TC-C7', pg_temp.u(15), pg_temp.u(16), null, null, 37.5, now() - interval '100 days'),
+  ('TC-C5', pg_temp.u(11), pg_temp.u(12), null, null, 30.0, now() - interval '100 days'),
+  ('TC-C6', pg_temp.u(13), pg_temp.u(14), null, null, 30.0, now() - interval '100 days'),
+  ('TC-C7', pg_temp.u(15), pg_temp.u(16), null, null, 30.0, now() - interval '100 days'),
   ('TC-C8', pg_temp.u(20), null, null, null, 37.5, now() - interval '100 days');
 
 -- ---------- anon ----------
@@ -125,8 +148,11 @@ select pg_temp.ok('partner before answering: not_started, no hint of u1''s answe
 insert into t_v values ('u2_submit', public.submit_temp(pg_temp.a(array[2,2,1,2,2,1,2,2,2,1])));
 -- u1 [0,1,0,0,2,0,1,0,0,0] -> pts [2,1,2,2,0,2,1,2,2,2]; u2 [2,2,1,2,2,1,2,2,2,1] -> [0,0,1,0,0,1,0,0,0,1]; sum 19/40
 -- areas: 고마움 3/8 -> 35.75, 그럴수있지 5/12 -> 36.17, 고정관념 6/12 -> 37.0, 책임 5/8 -> 38.25 ; total 32 + 4.75 = 36.75 -> 36.8
-select pg_temp.ok('scoring: total 36.8, areas 35.8 / 36.2 / 37.0 / 38.3 (answers only, no activity)',
-  (select pg_temp.temps(v) = array[36.8, 35.8, 36.2, 37.0, 38.3]::numeric[] from t_v where k = 'u2_submit'));
+select pg_temp.ok('scoring: areas 35.8 / 36.2 / 37.0 / 38.3 (answers only, no activity)',
+  (select (pg_temp.temps(v))[2:5] = array[35.8, 36.2, 37.0, 38.3]::numeric[] from t_v where k = 'u2_submit'));
+select pg_temp.ok('first measurement floor: answers give 36.8 but home showed 39.4 -> total 39.4 (no drop)',
+  (select (pg_temp.temps(v))[1] = 39.4 from t_v where k = 'u2_submit'));
+select pg_temp.ok('floor only reads warmth_temp: still 39.4, not written', (select warmth_temp from public.couples where code = 'TC-C1') = 39.4);
 select pg_temp.ok('result: status done, days_left 14, next_on = today + 14 (KST)',
   (select v->>'status' = 'done' and (v->>'days_left')::int = 14
      and v->>'next_on' = to_char((now() at time zone 'Asia/Seoul')::date + 14, 'YYYY-MM-DD') from t_v where k = 'u2_submit'));
@@ -155,20 +181,27 @@ select pg_temp.ok('limit check is server-side only: still 1 measurement row', (s
 set local role authenticated;
 select pg_temp.as_user(pg_temp.u(1)::text);
 select pg_temp.ok('14 days later: not_started again, last result still shown, days_left 0',
-  public.my_temp()->>'status' = 'not_started' and (public.my_temp()->>'days_left')::int = 0 and (pg_temp.temps(public.my_temp()))[1] = 36.8);
+  public.my_temp()->>'status' = 'not_started' and (public.my_temp()->>'days_left')::int = 0 and (pg_temp.temps(public.my_temp()))[1] = 39.4);
 
 -- ---------- second measurement: activity since the last one ----------
 reset role;
-insert into private.gratitude_sends(couple_code, sender_role, sent_on) values
-  ('TC-C1', 'A', (now() at time zone 'Asia/Seoul')::date), ('TC-C1', 'B', (now() at time zone 'Asia/Seoul')::date),
-  ('TC-C1', 'A', (now() at time zone 'Asia/Seoul')::date - 3),
-  ('TC-C1', 'A', (now() at time zone 'Asia/Seoul')::date - 20);  -- before the last measurement: not counted
-insert into public.daily_missions(id, couple_code, target_role, title, message, accepted, accepted_at, created_at) values
-  ('tm1', 'TC-C1', 'A', 't', 'm', true, now() - interval '1 day', now() - interval '2 days'),
-  ('tm2', 'TC-C1', 'B', 't', 'm', true, now() - interval '3 days', now() - interval '4 days'),
-  ('tm3', 'TC-C1', 'B', 't', 'm', true, now() - interval '30 days', now() - interval '31 days'),  -- before window
-  ('tm4', 'TC-C1', 'A', 't', 'm', false, null, now() - interval '5 days'),   -- delivered, not done past 3 days: -0.1
-  ('tm5', 'TC-C1', 'A', 't', 'm', false, null, now() - interval '1 day');    -- still open (inside grace): nothing
+select pg_temp.gr('TC-C1', 'A', (now() at time zone 'Asia/Seoul')::date, 1), pg_temp.gr('TC-C1', 'B', (now() at time zone 'Asia/Seoul')::date, 2),
+  pg_temp.gr('TC-C1', 'A', (now() at time zone 'Asia/Seoul')::date - 3, 1),
+  pg_temp.gr('TC-C1', 'A', (now() at time zone 'Asia/Seoul')::date - 20, 1);  -- before the last measurement: not counted
+insert into private.gratitude_sends(couple_code, sender_role, sent_on) values ('TC-C1', 'B', (now() at time zone 'Asia/Seoul')::date - 1); -- legacy row (no sender recorded): not counted
+select pg_temp.ok('gratitude sender recorded by trigger (u1 today), none for the legacy row',
+  (select user_id from private.gratitude_senders where couple_code = 'TC-C1' and sender_role = 'A' and sent_on = (now() at time zone 'Asia/Seoul')::date) = pg_temp.u(1)
+  and not exists (select 1 from private.gratitude_senders where couple_code = 'TC-C1' and sent_on = (now() at time zone 'Asia/Seoul')::date - 1));
+select pg_temp.dm('tm1', 'TC-C1', 'A', 2, true, now() - interval '1 day', now() - interval '2 days'),
+  pg_temp.dm('tm2', 'TC-C1', 'B', 1, true, now() - interval '3 days', now() - interval '4 days'),
+  pg_temp.dm('tm3', 'TC-C1', 'B', 1, true, now() - interval '30 days', now() - interval '31 days'),  -- before window
+  pg_temp.dm('tm4', 'TC-C1', 'A', 2, false, null, now() - interval '5 days'),   -- delivered, not done past 3 days: -0.1
+  pg_temp.dm('tm5', 'TC-C1', 'A', 2, false, null, now() - interval '1 day');    -- still open (inside grace): nothing
+insert into public.daily_missions(id, couple_code, target_role, title, message, accepted, accepted_at, created_at)
+  values ('tm6', 'TC-C1', 'A', 't', 'm', true, now() - interval '1 day', now() - interval '2 days');  -- no sender (service/legacy): not counted
+select pg_temp.ok('trigger stamped ids: tm1 sender u2 -> target u1; tm6 no sender',
+  (select (sender_id, target_id) = (pg_temp.u(2), pg_temp.u(1)) from public.daily_missions where id = 'tm1')
+  and (select sender_id is null from public.daily_missions where id = 'tm6'));
 set local role authenticated;
 select pg_temp.as_user(pg_temp.u(1)::text);
 select public.submit_temp(pg_temp.a(array[0,1,0,0,2,0,1,0,0,0]));
@@ -181,10 +214,9 @@ reset role;
 select pg_temp.ok('C1 has 2 measurement rows (round 1, 2)', (select array_agg(round order by round) from private.temp_measurements where couple_code = 'TC-C1') = array[1, 2]);
 
 -- ---------- caps + clamp: C3 all best + lots of activity ----------
-insert into private.gratitude_sends(couple_code, sender_role, sent_on)
-  select 'TC-C3', r, (now() at time zone 'Asia/Seoul')::date - d from generate_series(0, 9) d, (values ('A'), ('B')) v(r);
-insert into public.daily_missions(id, couple_code, target_role, title, message, accepted, accepted_at, created_at)
-  select 'c3d' || n, 'TC-C3', 'A', 't', 'm', true, now() - interval '1 hour', now() - interval '2 hours' from generate_series(1, 10) n;
+select pg_temp.gr('TC-C3', r, (now() at time zone 'Asia/Seoul')::date - d, case r when 'A' then 7 else 8 end)
+  from generate_series(0, 9) d, (values ('A'), ('B')) v(r);
+select pg_temp.dm('c3d' || n, 'TC-C3', 'A', 8, true, now() - interval '1 hour', now() - interval '2 hours') from generate_series(1, 10) n;
 set local role authenticated;
 select pg_temp.as_user(pg_temp.u(7)::text); select public.submit_temp(pg_temp.a(array[0,0,0,0,0,0,0,0,0,0]));
 select pg_temp.as_user(pg_temp.u(8)::text);
@@ -195,8 +227,7 @@ select pg_temp.ok('warmth_temp 44.9 not used, not changed', (select warmth_temp 
 reset role;
 
 -- ---------- low result shown as-is + penalty cap: C4 all worst, 10 missed missions ----------
-insert into public.daily_missions(id, couple_code, target_role, title, message, accepted, accepted_at, created_at)
-  select 'c4d' || n, 'TC-C4', 'B', 't', 'm', false, null, now() - interval '10 days' from generate_series(1, 10) n;
+select pg_temp.dm('c4d' || n, 'TC-C4', 'B', 9, false, null, now() - interval '10 days') from generate_series(1, 10) n;
 set local role authenticated;
 select pg_temp.as_user(pg_temp.u(9)::text); select public.submit_temp(pg_temp.a(array[2,2,2,2,2,2,2,2,2,2]));
 select pg_temp.as_user(pg_temp.u(10)::text);
@@ -210,9 +241,8 @@ reset role;
 -- C7: same answers, nothing at all, but 50 secret_emotions rows.
 insert into public.secret_emotions(couple_code, author_role, raw_text, created_at)
   select c, 'A', '서운해', now() - interval '1 day' from generate_series(1, 50) n, (values ('TC-C5'), ('TC-C7')) v(c);
-insert into public.daily_missions(id, couple_code, target_role, title, message, accepted, accepted_at, created_at) values
-  ('c5a', 'TC-C5', 'A', 't', 'm', true, now() - interval '1 day', now() - interval '2 days'),
-  ('c5b', 'TC-C5', 'B', 't', 'm', false, null, now() - interval '6 days');
+select pg_temp.dm('c5a', 'TC-C5', 'A', 12, true, now() - interval '1 day', now() - interval '2 days'),
+  pg_temp.dm('c5b', 'TC-C5', 'B', 11, false, null, now() - interval '6 days');
 insert into private.self_missions(id, couple_code, user_id, title, message, accepted, accepted_at, created_at, created_on) values
   ('c6a', 'TC-C6', pg_temp.u(13), 't', 'm', true, now() - interval '1 day', now() - interval '2 days', current_date - 2),
   ('c6b', 'TC-C6', pg_temp.u(14), 't', 'm', false, null, now() - interval '6 days', current_date - 6),
@@ -237,17 +267,35 @@ insert into t_v select 'c2_before', jsonb_build_array(completed_count, warmth_te
 set local role authenticated;
 select pg_temp.as_user(pg_temp.u(3)::text);
 select pg_temp.raises('self mission without a fresh 비밀방 mission -> no_recent_mission', 'select public.create_self_mission()', 'no_recent_mission');
-insert into public.daily_missions(id, couple_code, target_role, title, message) values ('m-c2-1', 'TC-C2', 'B', '신호', '도윤에게');
+-- a plain couple mission (direct insert, not via 비밀방) is NOT enough
+insert into public.daily_missions(id, couple_code, target_role, title, message) values ('m-1764000000001', 'TC-C2', 'B', '직접', '직접 넣은 미션');
+select pg_temp.raises('direct (non-비밀방) mission -> still no_recent_mission (source checked)', 'select public.create_self_mission()', 'no_recent_mission');
+select pg_temp.raises('send_secret_mission without 사이봇 use today -> no_saibot_use', $q$select public.send_secret_mission('m-1764000000002', '신호', '오늘의 커플 추천 팁', '도윤에게')$q$, 'no_saibot_use');
+reset role;
+insert into public.sai_chat_usage(couple_code, day, call_count) values ('TC-C2', (now() at time zone 'Asia/Seoul')::date, 1);
+set local role authenticated;
+select pg_temp.as_user(pg_temp.u(3)::text);
+select pg_temp.raises('send_secret_mission bad id -> bad_mission', $q$select public.send_secret_mission('x1', '신호', '', '도윤에게')$q$, 'bad_mission');
+select pg_temp.raises('send_secret_mission empty title -> bad_mission', $q$select public.send_secret_mission('m-1764000000003', ' ', '', '도윤에게')$q$, 'bad_mission');
+select pg_temp.raises('send_secret_mission 601-char message -> bad_mission', format('select public.send_secret_mission(%L, %L, %L, %L)', 'm-1764000000004', 't', '', repeat('가', 601)), 'bad_mission');
+insert into t_v values ('ssm', public.send_secret_mission('m-1764000000002', '신호', '오늘의 커플 추천 팁', '도윤에게'));
+select pg_temp.ok('send_secret_mission: mission for partner (B)', (select v->>'target_role' = 'B' from t_v where k = 'ssm'));
 insert into t_v values ('sm1', public.create_self_mission());
+select pg_temp.ok('self mission id is a uuid', (select (v->>'id') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' from t_v where k = 'sm1'));
 select pg_temp.ok('self mission: same keys as a daily_missions row, target_role = writer (A), not accepted',
   (select (select array_agg(k order by k) from jsonb_object_keys(v) k) = array['accepted', 'accepted_at', 'badge', 'couple_code', 'created_at', 'id', 'message', 'target_role', 'title']
-      and v->>'target_role' = 'A' and v->>'badge' = '오늘의 커플 추천 팁' and v->>'id' like 'm-%' and not (v->>'accepted')::boolean from t_v where k = 'sm1'));
+      and v->>'target_role' = 'A' and v->>'badge' = '오늘의 커플 추천 팁' and not (v->>'accepted')::boolean from t_v where k = 'sm1'));
 select pg_temp.ok('second call same day -> the same mission (one per day)', public.create_self_mission() = (select v from t_v where k = 'sm1'));
 select pg_temp.ok('writer sees it in my_self_missions', jsonb_array_length(public.my_self_missions()) = 1);
 select pg_temp.as_user(pg_temp.u(4)::text);
 select pg_temp.ok('partner: my_self_missions is empty', public.my_self_missions() = '[]'::jsonb);
-select pg_temp.ok('partner: not in daily_missions feed (only the 신호 mission)',
-  (select array_agg(id) from public.daily_missions where couple_code = 'TC-C2') = array['m-c2-1']);
+select pg_temp.ok('partner: not in daily_missions feed (only the two couple missions)',
+  (select array_agg(id order by id) from public.daily_missions where couple_code = 'TC-C2') = array['m-1764000000001', 'm-1764000000002']);
+select pg_temp.ok('partner: 비밀방 mission row has the same columns/shape as a direct one (source not visible)',
+  (select count(distinct (select array_agg(k order by k) from jsonb_object_keys(to_jsonb(d)) k)) = 1 and bool_and(d.badge = '오늘의 커플 추천 팁')
+     from public.daily_missions d where couple_code = 'TC-C2'));
+select pg_temp.raises('partner: mission_sources not readable', 'select * from private.mission_sources', 'permission denied');
+select pg_temp.raises('partner: create_self_mission -> no_recent_mission (partner did not send)', 'select public.create_self_mission()', 'no_recent_mission');
 select pg_temp.raises('partner cannot accept it', format('select public.accept_self_mission(%L)', (select v->>'id' from t_v where k = 'sm1')), 'mission_not_found');
 reset role;
 select pg_temp.ok('partner: completed_count unchanged', (select jsonb_build_array(completed_count, warmth_temp) from public.couples where code = 'TC-C2') = (select v from t_v where k = 'c2_before'));
@@ -295,6 +343,8 @@ select pg_temp.ok('u1 with new partner: waiting (own answer for u6), old result 
 select pg_temp.as_user(pg_temp.u(6)::text);
 insert into t_v values ('u6', public.submit_temp(pg_temp.a(array[0,0,0,0,0,0,0,0,0,0])));
 reset role;
+select pg_temp.ok('re-pair: u2''s gratitude/missions not inherited (고마움 42.6 = u1''s 3 days only, 책임 42.0, total 42.6)',
+  (select pg_temp.temps(v) = array[42.6, 42.6, 42.0, 42.0, 42.0]::numeric[] from t_v where k = 'u6'));
 select pg_temp.ok('u1 + u6 measured: round 3 row with u1/u6 only, status done', (select v->>'status' = 'done' from t_v where k = 'u6')
   and (select count(*) from private.temp_measurements where couple_code = 'TC-C1' and round = 3 and pg_temp.u(6) in (member_1, member_2)) = 1);
 set local role authenticated;
