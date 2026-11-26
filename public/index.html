@@ -61,7 +61,80 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v11-5";
+      const APP_VERSION = "v11-6";
+
+      // v11.6 사이봇 말풍선 문구 — 전부 여기서만 바꾼다 (Product Marketer 최종 문구). 앱 어디에도 쪽수는 넣지 않는다.
+      const SAIBOT_LINES = {
+        onboarding: [
+          '안녕하세요, 저는 사이봇이에요. 두 분 사이를 따뜻하게 데우는 걸 도와요.',
+          '서운한 건 상대에게 바로 말하지 말고 저한테 털어놓으세요. 그 말은 그대로 전하지 않아요. 작은 미션으로 바꿔서 전해 드려요.',
+          '먼저 둘 사이의 온도를 재 보고, 매일 미션 하나로 온도를 올려 봐요.'
+        ],
+        gratitude: [
+          '『긍정학개론』에서는 감사하다고 해야 감사한 것이 되고, 재미있다고 해야 재밌어지고, 칭찬을 해야 칭찬거리가 된다고 해요.',
+          '오늘 사소한 고마움 하나를 표현해서 사이를 더 가깝게 해 봐요.'
+        ],
+        secret: [
+          '여기서 말씀하신 이야기는 연인에게는 보이지 않아요. 서운한 점은 간단한 미션으로 바꿔서 전해 드려요.',
+          '미션은 매일 누구에게나 와요. 어떤 미션이 서운함에서 나왔는지는 상대가 알 수 없어요.',
+          "서운한 이야기를 하시면 연인에게는 '오늘 고마운 점 하나 말해 주기' 같은 따뜻한 미션이 가요."
+        ],
+        secretLock: '여기서 말씀하신 이야기는 연인에게는 보이지 않아요.',
+        tempStart: '지금부터 두 분 사이의 온도를 재 볼게요. 제가 하나씩 물어볼게요.',
+        // 영역 첫 문항 앞 한마디 (전부 책 내용 → 아래에 '도서 『긍정학개론』 중에서')
+        tempArea: {
+          gr: { line: '감사도, 재미도, 칭찬도 100% 모두 내 이득을 위한 거래요. 감사하면 내 기분이 먼저 좋아지고, 그게 둘 사이를 좋게 만들어요.', book: true },
+          ok: { line: "'그럴 수 있지'는 나를 지키는 기술이래요. 상대를 봐주는 말이 아니라 내 마음을 지키는 말이에요.", book: true },
+          op: { line: "괴로움은 내가 선택한 고정관념에서 비롯된대요. '이건 이래야 해'를 하나만 내려놔도 마음이 가벼워져요.", book: true },
+          ac: { line: '모든 것은 나로부터 비롯된대요. 내 몫을 먼저 하면 둘 사이를 내가 바꿀 수 있어요.', book: true }
+        }
+      };
+      // 온도 영역 이름 (서버 key 기준, 화면 표시만). 이름을 바꿀 땐 이 한 곳만.
+      const AREA_NAMES = { gratitude: '성숙 온도', okay: '수용 온도', open: '갈등 온도', resp: '해결 온도' };
+      // 숫자 옆 작은 한 줄 (갈등 온도만)
+      const AREA_HINTS = { open: '높을수록 갈등을 잘 풀어요' };
+      const AREA_BY_T = { gr: 'gratitude', ok: 'okay', op: 'open', ac: 'resp' };
+      function areaLabel(a) { return AREA_NAMES[a && a.key] || String((a && a.label) || ''); }
+
+      // 초대 링크: ?invite=S2-XXXXXX (또는 #invite=). 카카오 로그인(?code=)을 지나도 남도록 sessionStorage + localStorage(24시간)
+      const INVITE_KEY = 'urisai_invite_v1';
+      function normInvite(v) {
+        let t = String(v || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
+        if (!t) return '';
+        if (t.indexOf('S2-') !== 0) t = 'S2-' + t.replace(/^S2/, '').replace(/^-/, '');
+        return /^S2-[A-Z0-9]{6}$/.test(t) ? t : '';
+      }
+      function inviteUrl(code) { return location.origin + location.pathname + '?invite=' + encodeURIComponent(code); }
+      function pendingInvite() {
+        try {
+          const a = normInvite(sessionStorage.getItem(INVITE_KEY));
+          if (a) return a;
+          const b = JSON.parse(localStorage.getItem(INVITE_KEY) || 'null');
+          if (b && Date.now() - Number(b.t) < 86400000) return normInvite(b.c);
+        } catch (_e) {}
+        return '';
+      }
+      function clearInvite() {
+        try { sessionStorage.removeItem(INVITE_KEY); localStorage.removeItem(INVITE_KEY); } catch (_e) {}
+      }
+      function copyInviteQuiet(code) {
+        try { if (code && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).catch(function () {}); } catch (_e) {}
+      }
+      (function captureInvite() {
+        try {
+          const q = new URLSearchParams(location.search);
+          const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+          if (!q.has('invite') && !h.has('invite')) return;
+          const c = normInvite(q.get('invite') || h.get('invite'));
+          q.delete('invite'); h.delete('invite');
+          const qs = q.toString(), hs = h.toString();
+          history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + (hs ? '#' + hs : ''));
+          if (!c) return;
+          sessionStorage.setItem(INVITE_KEY, c);
+          localStorage.setItem(INVITE_KEY, JSON.stringify({ c: c, t: Date.now() }));
+          copyInviteQuiet(c);
+        } catch (_e) {}
+      })();
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
@@ -451,7 +524,7 @@
         state.shareConsent = next;
         if (next && prev && prev.id === next.id && prev.status === 'pending' && next.requested_by_me) {
           if (next.status === 'accepted') showToast('둘 다 좋대요! 이제 올릴 수 있어요 ✨');
-          if (next.status === 'declined') showToast('이번 건 둘만 보기로 했어요. 카드는 우리 온도 탭에 그대로 있어요.');
+          if (next.status === 'declined') showToast('이번 건 둘만 보기로 했어요. 카드는 사랑의 온도계 탭에 그대로 있어요.');
         } else if (next && next.status === 'pending' && !next.requested_by_me && (!prev || prev.id !== next.id)) {
           // 오늘의 미션 탭에서는 같은 문구의 동의 카드가 보이므로 토스트는 건너뛴다
           if (state.activeTab !== 'missions') {
@@ -632,30 +705,9 @@
                 </div>` : ''}`;
       }
 
-      // 비밀방 — 첫 안내 카드 (한 번 확인하면 다시 안 뜸)
-      function renderSecretInfoCard() {
-        if (!paywallOn() || secretInfoAcked) return '';
-        try { if (localStorage.getItem(secretInfoKey())) return ''; } catch (_e) { return ''; }
-        return `
-                <div class="animate-pop bg-white rounded-2xl p-4 border border-[#FF8A80] ring-2 ring-[#FF8A80]/15 shadow-sm space-y-3">
-                  <div>
-                    <p class="text-sm font-extrabold text-[#2D3436]">쓴 말은 그대로 보이지 않아요</p>
-                    <p class="text-xs text-[#636E72] mt-1.5 leading-relaxed">여기 쓴 문장은 연인에게 절대 보이지 않아요. 요즘 마음이 어느 쪽에 있는지만 주제로 정리돼서, 두 분이 함께 여는 리포트에 들어갈 수 있어요.</p>
-                  </div>
-                  <button type="button" data-action="secret-info-ok" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">확인했어요</button>
-                </div>`;
-      }
-
-      // 비밀방 — 입력창 위 한 줄 (+ 눌러서 펼치기)
+      // 비밀방 — 입력창 위 한 줄 (v11.6: 리포트 설명 카드·펼치기 제거)
       function renderSecretInfoLine() {
-        if (!paywallOn()) return '';
-        return `
-              <button type="button" data-action="secret-info-toggle" class="w-full text-left text-[11px] text-[#9AA5A9] pb-2">🔒 쓴 문장은 절대 보이지 않아요 · <span class="font-bold text-[#E0665B] underline underline-offset-2">리포트에는 뭐가 들어가나요?</span></button>
-              ${state.secretInfoOpen ? `
-              <div class="mb-2 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/20 px-3 py-2 text-[11px] text-[#636E72] leading-relaxed">
-                <p>들어가는 것: 요즘 서운함 주제 TOP 3, 좋아하는 다정함 방식</p>
-                <p>절대 안 들어가는 것: 쓴 문장 그대로, 인용, 날짜별 기록</p>
-              </div>` : ''}`;
+        return `<p class="w-full text-left text-[11px] text-[#9AA5A9] pb-2" data-secret-lock>🔒 ${esc(SAIBOT_LINES.secretLock)}</p>`;
       }
 
       // v10: 퍼널 카운터 (실패해도 무시)
@@ -1095,7 +1147,7 @@
           <div class="text-center mt-4">
             <img src="${AVATAR_SRC}" alt="사이봇" class="w-24 h-24 rounded-3xl mx-auto object-cover border-2 border-[#FF8A80]/40 shadow-md" />
             <h1 class="text-2xl font-extrabold text-[#2D3436] mt-4 tracking-tight">우리사이</h1>
-            <p class="text-xs text-[#636E72] mt-2 leading-relaxed">${subtitle}</p>
+            ${subtitle ? `<p class="text-xs text-[#636E72] mt-2 leading-relaxed">${subtitle}</p>` : ''}
           </div>
         `;
       }
@@ -1111,9 +1163,24 @@
         }
 
         if (state.phase === 'signedOut') {
+          let seen = false;
+          try { seen = Boolean(localStorage.getItem('urisai_onboard_v116')); } catch (_e) {}
+          const step = Math.min(Math.max(0, state.obStep || 0), SAIBOT_LINES.onboarding.length - 1);
           return `
             <div class="flex-1 flex flex-col justify-between px-6 py-10 safe-top safe-bottom">
-              ${landingHeader('서운한 마음은 사이봇에게만 털어놓으세요.<br />상대방에겐 티 나지 않는 따뜻한 데일리 미션으로 도착해요.')}
+              ${landingHeader('')}
+              ${seen ? '' : `
+              <div class="animate-pop" data-onboarding data-step="${step}">
+                <div class="relative bg-white rounded-2xl px-4 py-3.5 border border-[#FF8A80]/20 shadow-sm">
+                  <span class="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-white border-l border-t border-[#FF8A80]/20"></span>
+                  <p class="text-[14px] text-[#2D3436] leading-relaxed text-center" data-onboarding-text>${esc(SAIBOT_LINES.onboarding[step])}</p>
+                </div>
+                <div class="flex items-center justify-between mt-3 px-1">
+                  <button type="button" data-action="ob-skip" class="text-[11px] font-bold text-[#9AA5A9]">건너뛰기</button>
+                  <div class="flex gap-1.5">${SAIBOT_LINES.onboarding.map((_l, k) => `<span class="w-1.5 h-1.5 rounded-full ${k === step ? 'bg-[#FF8A80]' : 'bg-[#FF8A80]/25'}"></span>`).join('')}</div>
+                  <button type="button" data-action="ob-next" class="text-[11px] font-extrabold text-[#E0665B]">${step < SAIBOT_LINES.onboarding.length - 1 ? '다음' : '시작하기'}</button>
+                </div>
+              </div>`}
               <div class="space-y-2.5">
                 <button type="button" data-action="kakao-login" ${state.busy ? 'disabled' : ''} class="w-full py-3.5 rounded-2xl bg-[#FEE500] hover:brightness-95 active:scale-[0.99] text-[#191919] text-sm font-extrabold shadow-[0_6px_20px_rgba(254,229,0,0.35)] transition-all flex items-center justify-center gap-2 ${state.busy ? 'opacity-60' : ''}">
                   <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#191919" d="M12 3C6.48 3 2 6.58 2 11c0 2.85 1.86 5.35 4.66 6.77l-.95 3.48c-.08.3.26.54.52.37l4.13-2.74c.54.06 1.08.12 1.64.12 5.52 0 10-3.58 10-8S17.52 3 12 3z"/></svg>
@@ -1137,12 +1204,15 @@
             <div class="bg-white rounded-3xl p-5 shadow-[0_8px_28px_rgba(45,52,54,0.06)] border border-[#FF8A80]/20 space-y-4 my-6">
               <div>
                 <label class="block text-[11px] font-bold text-[#636E72] mb-1">우리사이에서 쓸 내 닉네임</label>
-                <input id="ob-my-name" type="text" maxlength="12" value="${esc(name)}" placeholder="닉네임" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
+                <input id="ob-my-name" type="text" maxlength="12" value="${esc(state.obName != null ? state.obName : name)}" placeholder="닉네임" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
               </div>
               ${state.joinMode ? `
                 <div>
                   <label class="block text-[11px] font-bold text-[#636E72] mb-1">연인에게 받은 초대 코드</label>
-                  <input id="ob-code" type="text" autocapitalize="characters" autocomplete="off" placeholder="S2-XXXXXX" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-mono font-bold tracking-wider uppercase focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
+                  <div class="flex items-center w-full rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 focus-within:ring-2 focus-within:ring-[#FF8A80]/40">
+                    <span class="pl-3 text-sm font-mono font-bold tracking-wider text-[#2D3436] select-none" aria-hidden="true">S2-</span>
+                    <input id="ob-code" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" value="${esc(state.joinRest || '')}" placeholder="XXXXXX" aria-label="초대 코드 (S2- 뒤 6자리)" class="flex-1 min-w-0 pr-3 py-2.5 bg-transparent text-sm font-mono font-bold tracking-wider uppercase focus:outline-none" />
+                  </div>
                 </div>
               ` : `
                 <p class="text-[11px] text-[#636E72] leading-relaxed">먼저 시작하는 분은 <b>초대코드 만들기</b>, 연인에게 코드를 받은 분은 <b>초대코드 입력</b>을 눌러 주세요.</p>
@@ -1238,7 +1308,6 @@
 
       function renderGratitudeCard() {
         const sent = gratitudeSentToday();
-        const quote = gratitudeQuote();
         const idx = state.gratitudeIdx;
         const gp = state.gratitudeParts;
         const canSend = !!gratitudeSentence(idx, gp);
@@ -1248,8 +1317,12 @@
                   <span class="text-[11px] font-bold text-[#FF8A80] bg-[#FFF0EE] px-2.5 py-0.5 rounded-full">오늘의 고마움</span>
                 </div>
                 <h3 class="text-[15px] font-extrabold text-[#2D3436] mb-1.5">${esc(state.partnerName)}님에게 고마운 거 하나</h3>
-                <p class="text-[13px] text-[#4A5568] leading-relaxed">“${esc(quote.q)}”</p>
-                <p class="text-[12px] text-[#9AA5A9] mt-0.5">도서 『긍정학개론』 중에서</p>
+                <div class="flex items-start gap-2 mt-2" data-saibot-bubble="gratitude">
+                  <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
+                  <div class="flex-1 min-w-0 bg-[#FFF9F5] rounded-2xl rounded-tl-sm px-3.5 py-2.5 border border-[#FF8A80]/15 space-y-1">
+                    ${SAIBOT_LINES.gratitude.map((l) => `<p class="text-[13px] text-[#4A5568] leading-relaxed">${esc(l)}</p>`).join('')}
+                  </div>
+                </div>
                 ${!sent ? `
                   <div class="flex gap-1.5 overflow-x-auto mt-3 pb-2 no-scrollbar">
                     <button type="button" data-action="gratitude-example" data-idx="-1" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-[#FF8A80]/30 transition-colors ${idx === -1 ? 'bg-[#FF8A80] text-white' : 'bg-[#FFF9F5] text-[#2D3436]'}">직접 쓰기</button>
@@ -1354,7 +1427,13 @@
         return `
           <div class="flex-1 flex flex-col min-h-0">
             <div id="chat-scroll" class="flex-1 overflow-y-auto px-4 py-4 space-y-3.5">
-              ${list.map((msg) => {
+              <div class="flex items-start gap-2 animate-pop" data-saibot-bubble="secret">
+                <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
+                <div class="max-w-[85%] space-y-1.5">
+                  ${SAIBOT_LINES.secret.map((l) => `<div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-sm"><p class="text-[13px] text-[#2D3436] leading-relaxed">${esc(l)}</p></div>`).join('')}
+                </div>
+              </div>
+              ${list.filter((msg) => msg.type !== 'welcome').map((msg) => {
                 if (msg.sender === 'user') {
                   return `
                     <div class="flex flex-col items-end animate-pop">
@@ -1416,7 +1495,6 @@
                   </div>
                 `;
               }).join('')}
-              ${renderSecretInfoCard()}
               ${state.botTyping ? `
                 <div id="bot-typing" class="flex items-start gap-2 animate-pop">
                   <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
@@ -1621,13 +1699,6 @@
         { t: 'ac', q: '우리 사이에 문제가 생기면 먼저 보는 곳은?', o: ['내가 바꿀 수 있는 것', '둘 다 반반', '연인이 바뀌어야 할 것'] },
         { t: 'ac', q: '마음을 어떻게 보여 줘요?', o: ['작은 행동으로 자주', '특별한 날에 몰아서', '말 안 해도 알 거라 생각해요'] }
       ];
-      // 문항 위에 붙는 개념 이름 + 책 한 줄 (도서 『긍정학개론』 중에서)
-      const TEMP_CONCEPTS = {
-        gr: { name: '고마움', line: '"감사하다고 해야 감사한 것이 된다"' },
-        ok: { name: '그럴 수 있지', line: '"\'그럴 수 있지\'는 나를 지키는 기술이다"' },
-        op: { name: '고정관념', line: '"괴로움은 내가 선택한 고정관념에서 비롯된다"' },
-        ac: { name: '책임', line: '"모든 것은 나로부터 비롯된다"' }
-      };
       function tempOn() { return Boolean(state.temp); }
       function tempLast() {
         const l = state.temp && state.temp.last;
@@ -1762,12 +1833,25 @@
           inner = `
                 <div class="${CARD} space-y-4">
                   ${tempProgress(i + 1)}
-                  ${TEMP_CONCEPTS[item.t] ? `<div class="text-center pt-1" data-temp-concept>
-                    <p class="text-[11px] font-bold text-[#FF8A80]">${esc(TEMP_CONCEPTS[item.t].name)}</p>
-                    <p class="text-[13px] font-bold text-[#4A5568] mt-1">${esc(TEMP_CONCEPTS[item.t].line)}</p>
-                    <p class="text-[10px] text-[#9AA5A9] mt-0.5">도서 『긍정학개론』 중에서</p>
-                  </div>` : ''}
-                  <h2 class="text-lg font-extrabold text-[#2D3436] text-center pt-1 pb-1">${esc(item.q)}</h2>
+                  ${(() => {
+                    const ORDER = ['gr', 'ok', 'op', 'ac'];
+                    const cur = ORDER.indexOf(item.t);
+                    const firstOfArea = i === 0 || TEMP_QS[i - 1].t !== item.t;
+                    const intro = SAIBOT_LINES.tempArea[item.t];
+                    const bubble = (inner, attr) => `<div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-sm" ${attr || ''}>${inner}</div>`;
+                    return `
+                  <div class="flex items-center gap-2.5" data-temp-checklist>
+                    <img src="${AVATAR_SRC}" alt="사이봇" class="w-11 h-11 rounded-2xl object-cover border border-[#FF8A80]/30 shrink-0" />
+                    <div class="flex-1 grid grid-cols-4 gap-1">
+                      ${ORDER.map((t, k) => `<span class="text-center rounded-lg py-1 text-[10.5px] font-bold border whitespace-nowrap ${k < cur ? 'bg-[#E8F8F0] text-[#1E8449] border-[#1E8449]/15' : k === cur ? 'bg-[#FFF0EE] text-[#E0665B] border-[#FF8A80]/40' : 'bg-white text-[#B2BEC3] border-[#2D3436]/8'}" data-temp-check="${k < cur ? 'done' : k === cur ? 'now' : 'todo'}">${k < cur ? '✓ ' : ''}${esc(AREA_NAMES[AREA_BY_T[t]].replace(/ 온도$/, ''))}</span>`).join('')}
+                    </div>
+                  </div>
+                  <div class="space-y-1.5" data-temp-bubbles>
+                    ${i === 0 ? bubble(`<p class="text-[13px] text-[#2D3436] leading-relaxed">${esc(SAIBOT_LINES.tempStart)}</p>`, 'data-temp-start') : ''}
+                    ${firstOfArea && intro ? bubble(`<p class="text-[13px] text-[#4A5568] leading-relaxed">${esc(intro.line)}</p>${intro.book ? '<p class="text-[11px] text-[#9AA5A9] mt-0.5" data-temp-cite>도서 『긍정학개론』 중에서</p>' : ''}`, 'data-temp-intro="' + item.t + '"') : ''}
+                    ${bubble(`<h2 class="text-[16px] font-extrabold text-[#2D3436] leading-snug">${esc(item.q)}</h2>`, 'data-temp-question')}
+                  </div>`;
+                  })()}
                   <div class="space-y-2.5">
                     ${item.o.map((label, k) => `<button type="button" data-action="temp-answer" data-i="${k}" class="w-full py-3.5 px-4 rounded-2xl bg-[#FFF9F5] active:bg-[#FFF0EE] border border-[#FF8A80]/30 text-sm font-bold text-[#2D3436] transition-colors">${esc(label)}</button>`).join('')}
                   </div>
@@ -1787,8 +1871,8 @@
             return `
                     <div class="rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-3.5 text-left" data-temp-area>
                       <div class="flex items-center justify-between">
-                        <p class="text-[11px] font-bold text-[#FF8A80]">${esc(a.label)}</p>
-                        <p class="text-sm font-extrabold text-[#2D3436]">${Number.isFinite(t) ? dispTemp(t) : '-'}°C</p>
+                        <p class="text-[11px] font-bold text-[#FF8A80]">${esc(areaLabel(a))}</p>
+                        <p class="text-sm font-extrabold text-[#2D3436] whitespace-nowrap">${AREA_HINTS[a.key] ? `<span class="text-[10px] font-bold text-[#9AA5A9] mr-1.5" data-area-hint>${esc(AREA_HINTS[a.key])}</span>` : ''}${Number.isFinite(t) ? dispTemp(t) : '-'}°C</p>
                       </div>
                       <div class="mt-1.5 w-full h-1.5 bg-[#FFF0EE] rounded-full overflow-hidden">
                         <div class="h-full bg-gradient-to-r from-[#FFAB91] to-[#FF8A80] rounded-full" style="width:${warmthPct(Number.isFinite(t) ? t : 35)}%"></div>
@@ -1879,7 +1963,7 @@
         } else {
           const pending = c && c.status === 'pending';
           action = `
-                ${c && c.status === 'declined' ? '<p class="text-xs font-bold text-[#636E72] text-center leading-relaxed">이번 건 둘만 보기로 했어요. 카드는 우리 온도 탭에 그대로 있어요.</p>' : ''}
+                ${c && c.status === 'declined' ? '<p class="text-xs font-bold text-[#636E72] text-center leading-relaxed">이번 건 둘만 보기로 했어요. 카드는 사랑의 온도계 탭에 그대로 있어요.</p>' : ''}
                 <button type="button" data-action="request-share" ${pending ? 'disabled' : ''} class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all ${pending ? 'opacity-60' : ''}">올려도 될지 물어보기</button>`;
         }
         return `
@@ -2019,8 +2103,14 @@
         if (!root) return;
 
         if (state.phase !== 'ready') {
+          const ae = document.activeElement;
+          const keep = ae && ae.id && (ae.id === 'ob-code' || ae.id === 'ob-my-name') ? { id: ae.id, s: ae.selectionStart, e: ae.selectionEnd } : null;
           root.innerHTML = renderLanding() + renderModals();
           lastRenderedTab = '';
+          if (keep) {
+            const el = document.getElementById(keep.id);
+            if (el) { try { el.focus({ preventScroll: true }); el.setSelectionRange(keep.s, keep.e); } catch (_e) {} }
+          }
           return;
         }
 
@@ -2060,7 +2150,7 @@
             </button>
             <button type="button" data-action="switch-tab" data-tab="warmth" class="py-2 rounded-2xl flex flex-col items-center gap-0.5 transition-colors ${state.activeTab === 'warmth' ? 'bg-[#FFF0EE] text-[#E0665B]' : 'text-[#636E72]'}">
               <span class="text-base leading-none">🌡️</span>
-              <span class="text-[11px] font-bold">우리 온도</span>
+              <span class="text-[11px] font-bold">사랑의 온도계</span>
             </button>
           </nav>
           ${renderModals()}
@@ -2112,6 +2202,7 @@
 
         if (action === 'kakao-login') {
           if (!sb) { showToast('잠시 후 다시 시도해 주세요'); return; }
+          copyInviteQuiet(pendingInvite());
           state.busy = true;
           render();
           const { error } = await sb.auth.signInWithOAuth({
@@ -2127,6 +2218,13 @@
           const myEl = document.getElementById('ob-my-name');
           if (myEl && myEl.value.trim()) state.myName = myEl.value.trim().slice(0, 12);
           state.joinMode = action === 'join-mode';
+          if (action === 'join-back') clearInvite();
+          render();
+          if (state.joinMode) { const cd = document.getElementById('ob-code'); if (cd) { try { cd.focus(); } catch (_e) {} } }
+        } else if (action === 'ob-next' || action === 'ob-skip') {
+          const last = SAIBOT_LINES.onboarding.length - 1;
+          if (action === 'ob-next' && (state.obStep || 0) < last) { state.obStep = (state.obStep || 0) + 1; render(); return; }
+          try { localStorage.setItem('urisai_onboard_v116', '1'); } catch (_e) {}
           render();
         } else if (action === 'create-couple' || action === 'join-couple') {
           if (state.busy) return;
@@ -2137,29 +2235,25 @@
           let code = '';
           if (action === 'join-couple') {
             const cdEl = document.getElementById('ob-code');
-            code = ((cdEl && cdEl.value) || '').trim().toUpperCase();
-            if (!code) { showToast('초대 코드를 입력해 주세요'); return; }
+            const rest = joinRestFrom((cdEl && cdEl.value) || state.joinRest || '');
+            state.joinRest = rest;
+            if (!rest) { showToast('초대 코드를 입력해 주세요'); return; }
+            if (rest.length !== 6) { showToast('초대 코드 6자리를 확인해 주세요'); return; }
+            code = 'S2-' + rest;
           }
           state.busy = true;
           render();
-          if (action === 'join-couple') {
-            const again = document.getElementById('ob-code');
-            if (again) again.value = code;
-          }
           try {
             const c = action === 'create-couple'
               ? await rpc('create_couple', { nickname: nick })
               : await rpc('join_couple', { p_code: code, nickname: nick });
             state.busy = false;
             if (!c || !c.code) throw new Error('empty');
+            clearInvite();
             await enterCouple(c, action === 'create-couple' ? '초대코드를 만들었어요! 연인에게 공유해 주세요 💌' : '연인과 연결됐어요! 💛');
           } catch (err) {
             state.busy = false;
             render();
-            if (action === 'join-couple') {
-              const again = document.getElementById('ob-code');
-              if (again) again.value = code;
-            }
             showToast(joinErrorMessage(err));
           }
         } else if (action === 'switch-tab') {
@@ -2372,7 +2466,7 @@
             showToast('저장에 실패했어요, 다시 시도해 주세요');
           }
         } else if (action === 'share-code') {
-          const text = '우리사이 초대 코드: ' + state.coupleCode + '\n' + location.origin + location.pathname + ' 에서 카카오로 시작한 뒤 "초대코드 입력"에 넣어 주세요 💛';
+          const text = '우리사이 초대 코드: ' + state.coupleCode + '\n링크를 누르면 코드가 바로 들어가요 💛\n' + inviteUrl(state.coupleCode);
           try {
             if (navigator.share) {
               await navigator.share({ title: '우리사이', text: text });
@@ -2489,7 +2583,7 @@
             const c = await rpc('respond_share_consent', { p_id: id, p_accept: accept });
             state.shareConsent = c && c.id ? c : null;
             render();
-            showToast(accept ? '둘 다 좋대요! 이제 올릴 수 있어요 ✨' : '이번 건 둘만 보기로 했어요. 카드는 우리 온도 탭에 그대로 있어요.');
+            showToast(accept ? '둘 다 좋대요! 이제 올릴 수 있어요 ✨' : '이번 건 둘만 보기로 했어요. 카드는 사랑의 온도계 탭에 그대로 있어요.');
           } catch (_e) {
             showToast('잠시 후 다시 시도해 주세요');
           }
@@ -2550,15 +2644,6 @@
           } catch (_e) {
             showToast(code);
           }
-        } else if (action === 'secret-info-ok') {
-          if (!paywallOn()) return;
-          secretInfoAcked = true;
-          render();
-          const r = await sbFetchQuiet('rpc/consent_secret_report', { method: 'POST', body: '{}' });
-          if (r && r.consented === true) {
-            try { localStorage.setItem(secretInfoKey(), '1'); } catch (_e) {}
-            if (state.paywall) state.paywall.report_consent = true;
-          }
         } else if (action === 'grant-secret-report') {
           // 설정의 [켜기]: 비밀방 안내 카드의 [확인했어요]와 같은 동의를 다시 기록한다
           if (!paywallOn()) return;
@@ -2575,9 +2660,6 @@
           if (state.paywall) state.paywall.report_consent = false;
           secretInfoAcked = false;
           try { localStorage.removeItem(secretInfoKey()); } catch (_e) {}
-          render();
-        } else if (action === 'secret-info-toggle') {
-          state.secretInfoOpen = !state.secretInfoOpen;
           render();
         } else if (action === 'gratitude-example') {
           const i = Number(btn.getAttribute('data-idx'));
@@ -2617,7 +2699,21 @@
         }
       });
 
+      // 초대 코드 칸: 'S2-'는 고정, 뒤 6자리만. 붙여넣은 전체 코드/링크도 받는다. 값은 state에 있어서 다시 그려도 안 지워진다.
+      function joinRestFrom(v) {
+        const raw = String(v || '');
+        const m = /invite=([^&#\s]+)/i.exec(raw);
+        const full = normInvite(m ? decodeURIComponent(m[1]) : raw);
+        if (full) return full.slice(3);
+        return raw.toUpperCase().replace(/^\s*S2-?/, '').replace(/[^A-Z0-9]/g, '').slice(0, 6);
+      }
       document.addEventListener('input', (e) => {
+        if (e.target && e.target.id === 'ob-code') {
+          const rest = joinRestFrom(e.target.value);
+          state.joinRest = rest;
+          if (e.target.value !== rest) { e.target.value = rest; try { e.target.setSelectionRange(rest.length, rest.length); } catch (_e) {} }
+        }
+        if (e.target && e.target.id === 'ob-my-name') state.obName = e.target.value.slice(0, 12);
         if (e.target && e.target.id === 'emotion-input') {
           state.draftInput = e.target.value;
         }
@@ -2750,8 +2846,11 @@
         try {
           const c = await rpc('my_couple', {});
           if (c && c.code) {
+            clearInvite();
             await enterCouple(c);
           } else {
+            const inv = pendingInvite();
+            if (inv) { state.joinMode = true; state.joinRest = inv.slice(3); copyInviteQuiet(inv); }
             state.phase = 'needCouple';
             render();
           }
