@@ -61,7 +61,47 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v11-5";
+      const APP_VERSION = "v11-5-1";
+
+      // 초대 링크: ?invite=S2-XXXXXX (또는 #invite=). 카카오 로그인(?code=)을 지나도 남도록 sessionStorage + localStorage(24시간)
+      const INVITE_KEY = 'urisai_invite_v1';
+      function normInvite(v) {
+        let t = String(v || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
+        if (!t) return '';
+        if (t.indexOf('S2-') !== 0) t = 'S2-' + t.replace(/^S2/, '').replace(/^-/, '');
+        return /^S2-[A-Z0-9]{6}$/.test(t) ? t : '';
+      }
+      function inviteUrl(code) { return location.origin + location.pathname + '?invite=' + encodeURIComponent(code); }
+      function pendingInvite() {
+        try {
+          const a = normInvite(sessionStorage.getItem(INVITE_KEY));
+          if (a) return a;
+          const b = JSON.parse(localStorage.getItem(INVITE_KEY) || 'null');
+          if (b && Date.now() - Number(b.t) < 86400000) return normInvite(b.c);
+        } catch (_e) {}
+        return '';
+      }
+      function clearInvite() {
+        try { sessionStorage.removeItem(INVITE_KEY); localStorage.removeItem(INVITE_KEY); } catch (_e) {}
+      }
+      function copyInviteQuiet(code) {
+        try { if (code && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).catch(function () {}); } catch (_e) {}
+      }
+      (function captureInvite() {
+        try {
+          const q = new URLSearchParams(location.search);
+          const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+          if (!q.has('invite') && !h.has('invite')) return;
+          const c = normInvite(q.get('invite') || h.get('invite'));
+          q.delete('invite'); h.delete('invite');
+          const qs = q.toString(), hs = h.toString();
+          history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + (hs ? '#' + hs : ''));
+          if (!c) return;
+          sessionStorage.setItem(INVITE_KEY, c);
+          localStorage.setItem(INVITE_KEY, JSON.stringify({ c: c, t: Date.now() }));
+          copyInviteQuiet(c);
+        } catch (_e) {}
+      })();
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
@@ -1137,12 +1177,15 @@
             <div class="bg-white rounded-3xl p-5 shadow-[0_8px_28px_rgba(45,52,54,0.06)] border border-[#FF8A80]/20 space-y-4 my-6">
               <div>
                 <label class="block text-[11px] font-bold text-[#636E72] mb-1">우리사이에서 쓸 내 닉네임</label>
-                <input id="ob-my-name" type="text" maxlength="12" value="${esc(name)}" placeholder="닉네임" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
+                <input id="ob-my-name" type="text" maxlength="12" value="${esc(state.obName != null ? state.obName : name)}" placeholder="닉네임" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
               </div>
               ${state.joinMode ? `
                 <div>
                   <label class="block text-[11px] font-bold text-[#636E72] mb-1">연인에게 받은 초대 코드</label>
-                  <input id="ob-code" type="text" autocapitalize="characters" autocomplete="off" placeholder="S2-XXXXXX" class="w-full px-3 py-2.5 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 text-sm font-mono font-bold tracking-wider uppercase focus:outline-none focus:ring-2 focus:ring-[#FF8A80]/40" />
+                  <div class="flex items-center w-full rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 focus-within:ring-2 focus-within:ring-[#FF8A80]/40">
+                    <span class="pl-3 text-sm font-mono font-bold tracking-wider text-[#2D3436] select-none" aria-hidden="true">S2-</span>
+                    <input id="ob-code" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="6" value="${esc(state.joinRest || '')}" placeholder="XXXXXX" aria-label="초대 코드 (S2- 뒤 6자리)" class="flex-1 min-w-0 pr-3 py-2.5 bg-transparent text-sm font-mono font-bold tracking-wider uppercase focus:outline-none" />
+                  </div>
                 </div>
               ` : `
                 <p class="text-[11px] text-[#636E72] leading-relaxed">먼저 시작하는 분은 <b>초대코드 만들기</b>, 연인에게 코드를 받은 분은 <b>초대코드 입력</b>을 눌러 주세요.</p>
@@ -2019,8 +2062,14 @@
         if (!root) return;
 
         if (state.phase !== 'ready') {
+          const ae = document.activeElement;
+          const keep = ae && ae.id && (ae.id === 'ob-code' || ae.id === 'ob-my-name') ? { id: ae.id, s: ae.selectionStart, e: ae.selectionEnd } : null;
           root.innerHTML = renderLanding() + renderModals();
           lastRenderedTab = '';
+          if (keep) {
+            const el = document.getElementById(keep.id);
+            if (el) { try { el.focus({ preventScroll: true }); el.setSelectionRange(keep.s, keep.e); } catch (_e) {} }
+          }
           return;
         }
 
@@ -2112,6 +2161,7 @@
 
         if (action === 'kakao-login') {
           if (!sb) { showToast('잠시 후 다시 시도해 주세요'); return; }
+          copyInviteQuiet(pendingInvite());
           state.busy = true;
           render();
           const { error } = await sb.auth.signInWithOAuth({
@@ -2127,7 +2177,9 @@
           const myEl = document.getElementById('ob-my-name');
           if (myEl && myEl.value.trim()) state.myName = myEl.value.trim().slice(0, 12);
           state.joinMode = action === 'join-mode';
+          if (action === 'join-back') clearInvite();
           render();
+          if (state.joinMode) { const cd = document.getElementById('ob-code'); if (cd) { try { cd.focus(); } catch (_e) {} } }
         } else if (action === 'create-couple' || action === 'join-couple') {
           if (state.busy) return;
           const myEl = document.getElementById('ob-my-name');
@@ -2137,29 +2189,25 @@
           let code = '';
           if (action === 'join-couple') {
             const cdEl = document.getElementById('ob-code');
-            code = ((cdEl && cdEl.value) || '').trim().toUpperCase();
-            if (!code) { showToast('초대 코드를 입력해 주세요'); return; }
+            const rest = joinRestFrom((cdEl && cdEl.value) || state.joinRest || '');
+            state.joinRest = rest;
+            if (!rest) { showToast('초대 코드를 입력해 주세요'); return; }
+            if (rest.length !== 6) { showToast('초대 코드 6자리를 확인해 주세요'); return; }
+            code = 'S2-' + rest;
           }
           state.busy = true;
           render();
-          if (action === 'join-couple') {
-            const again = document.getElementById('ob-code');
-            if (again) again.value = code;
-          }
           try {
             const c = action === 'create-couple'
               ? await rpc('create_couple', { nickname: nick })
               : await rpc('join_couple', { p_code: code, nickname: nick });
             state.busy = false;
             if (!c || !c.code) throw new Error('empty');
+            clearInvite();
             await enterCouple(c, action === 'create-couple' ? '초대코드를 만들었어요! 연인에게 공유해 주세요 💌' : '연인과 연결됐어요! 💛');
           } catch (err) {
             state.busy = false;
             render();
-            if (action === 'join-couple') {
-              const again = document.getElementById('ob-code');
-              if (again) again.value = code;
-            }
             showToast(joinErrorMessage(err));
           }
         } else if (action === 'switch-tab') {
@@ -2372,7 +2420,7 @@
             showToast('저장에 실패했어요, 다시 시도해 주세요');
           }
         } else if (action === 'share-code') {
-          const text = '우리사이 초대 코드: ' + state.coupleCode + '\n' + location.origin + location.pathname + ' 에서 카카오로 시작한 뒤 "초대코드 입력"에 넣어 주세요 💛';
+          const text = '우리사이 초대 코드: ' + state.coupleCode + '\n링크를 누르면 코드가 바로 들어가요 💛\n' + inviteUrl(state.coupleCode);
           try {
             if (navigator.share) {
               await navigator.share({ title: '우리사이', text: text });
@@ -2617,7 +2665,21 @@
         }
       });
 
+      // 초대 코드 칸: 'S2-'는 고정, 뒤 6자리만. 붙여넣은 전체 코드/링크도 받는다. 값은 state에 있어서 다시 그려도 안 지워진다.
+      function joinRestFrom(v) {
+        const raw = String(v || '');
+        const m = /invite=([^&#\s]+)/i.exec(raw);
+        const full = normInvite(m ? decodeURIComponent(m[1]) : raw);
+        if (full) return full.slice(3);
+        return raw.toUpperCase().replace(/^\s*S2-?/, '').replace(/[^A-Z0-9]/g, '').slice(0, 6);
+      }
       document.addEventListener('input', (e) => {
+        if (e.target && e.target.id === 'ob-code') {
+          const rest = joinRestFrom(e.target.value);
+          state.joinRest = rest;
+          if (e.target.value !== rest) { e.target.value = rest; try { e.target.setSelectionRange(rest.length, rest.length); } catch (_e) {} }
+        }
+        if (e.target && e.target.id === 'ob-my-name') state.obName = e.target.value.slice(0, 12);
         if (e.target && e.target.id === 'emotion-input') {
           state.draftInput = e.target.value;
         }
@@ -2750,8 +2812,11 @@
         try {
           const c = await rpc('my_couple', {});
           if (c && c.code) {
+            clearInvite();
             await enterCouple(c);
           } else {
+            const inv = pendingInvite();
+            if (inv) { state.joinMode = true; state.joinRest = inv.slice(3); copyInviteQuiet(inv); }
             state.phase = 'needCouple';
             render();
           }
