@@ -1,4 +1,4 @@
-const CACHE_NAME = 'urisai-pwa-v11-8';
+const CACHE_NAME = 'urisai-pwa-v11-9';
 const ASSETS = ['./manifest.json', './icon-192.png', './icon-512.png', './og.png', './app.css',
   './saibot/body.png', './saibot/eyes.png', './saibot/mouth.png', './saibot/wingL.png', './saibot/wingR.png', './saibot/halo.png', './saibot/heart.png', './saibot/fx.png'];
 
