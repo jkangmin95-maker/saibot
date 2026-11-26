@@ -139,6 +139,87 @@
     @keyframes onbQblink{0%,100%{opacity:1}50%{opacity:.35}}
     @media (prefers-reduced-motion:reduce){.onb .sb-idle,.onb .sb-breathe,.onb .wingL,.onb .wingR,.onb .halo,.onb .heart,.onb .fx,.onb .shadow,.onb .kakao,.onb .bulb2,.onb .pointer i,.onb .qcard .qn.q span{animation:none!important}
       .onb *{transition:none!important}}
+
+
+    /* v11.10: 미션은 쌓였다가 다음 측정 때 한 번에 반영 (spec v4 §5) */
+    .onb .jar{position:absolute;right:24px;top:190px;width:64px;height:76px;border-radius:12px 12px 18px 18px;border:2px solid var(--c200);background:linear-gradient(to bottom,rgba(255,255,255,0),rgba(255,240,238,.7));opacity:0;transform:scale(.8);z-index:4;will-change:transform,opacity}
+    .onb .jar::before{content:"";position:absolute;left:10px;right:10px;top:-7px;height:6px;border-radius:3px;background:var(--c200)}
+    .onb .jar i{position:absolute;width:18px;height:18px;font-style:normal;font-size:17px;line-height:18px;text-align:center;color:var(--c500);opacity:0;will-change:transform,opacity}
+    .onb .jlbl{position:absolute;right:12px;top:272px;width:88px;text-align:center;font-size:13px;line-height:16px;font-weight:700;color:var(--c800);font-variant-numeric:tabular-nums;opacity:0;z-index:4}
+    .onb .cal{position:absolute;right:30px;top:126px;width:52px;height:56px;border-radius:12px;background:#fff;border:1.5px solid var(--c300);box-shadow:var(--shc);overflow:hidden;opacity:0;transform:scale(.6);z-index:4;text-align:center;will-change:transform,opacity}
+    .onb .cal .ct{height:15px;background:var(--c500);color:#fff;font-size:9px;font-weight:800;line-height:15px;letter-spacing:.02em}
+    .onb .cal .cn{display:block;font-size:20px;font-weight:800;line-height:24px;color:var(--ink9);font-variant-numeric:tabular-nums;transform-origin:50% 0}
+    .onb .cal .cs{display:block;font-size:9px;font-weight:700;color:var(--ink5);line-height:12px}
+    /* v11.10 레이어 사이봇 (saibot-design spec v4). 반복 동작은 온보딩과 같은 값, 반응은 WAAPI 한 번 */
+    .sbx{position:relative;flex-shrink:0;pointer-events:none;--eo:cubic-bezier(.22,1,.36,1);--ei:cubic-bezier(.65,0,.35,1)}
+    .sbx .act,.sbx .idle,.sbx .br{position:absolute;inset:0}
+    .sbx .act{transform-origin:50% 100%;will-change:transform}
+    .sbx .idle{animation:sbFloat 3.2s var(--ei) infinite;transform-origin:50% 90%}
+    .sbx .br{animation:sbBreathe 2.4s var(--ei) infinite;transform-origin:50% 95%}
+    @keyframes sbFloat{0%,100%{transform:translateY(0) rotate(-1.2deg)}50%{transform:translateY(-4%) rotate(1.2deg)}}
+    @keyframes sbBreathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.015,.985)}}
+    .sbx img{position:absolute;inset:0;width:100%;height:100%;max-width:none;user-select:none;-webkit-user-drag:none}
+    .sbx .wingL{transform-origin:34% 61%;animation:sbFlapL 1.6s var(--ei) infinite}
+    .sbx .wingR{transform-origin:66% 61%;animation:sbFlapR 1.6s var(--ei) infinite}
+    .sbx.fast .wingL,.sbx.fast .wingR{animation-duration:.42s}
+    @keyframes sbFlapL{0%,100%{transform:rotate(0)}50%{transform:rotate(9deg)}}
+    @keyframes sbFlapR{0%,100%{transform:rotate(0)}50%{transform:rotate(-9deg)}}
+    .sbx .halo{animation:sbHalo 2.4s var(--ei) infinite;transform-origin:50% 8%}
+    @keyframes sbHalo{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-1.5%) rotate(2deg)}}
+    .sbx .heart{transform-origin:86% 30%;animation:sbBeat 1.4s var(--eo) infinite}
+    @keyframes sbBeat{0%,100%{transform:scale(1)}12%{transform:scale(1.18)}24%{transform:scale(.96)}36%{transform:scale(1.08)}}
+    .sbx .fx{animation:sbTwinkle 2.2s var(--ei) infinite}
+    @keyframes sbTwinkle{0%,100%{opacity:1}50%{opacity:.35}}
+    .sbx .eyes{transform-origin:56% 44%}
+    .sbx .mouth{transform-origin:56.5% 46%}
+    .sbx .burst{position:absolute;left:50%;top:38%;width:0;height:0}
+    .sbx .burst span{position:absolute;left:-7px;top:-9px;font-size:var(--bs,16px);line-height:1;color:#FF8A80;opacity:0}
+    .sbx.climb .idle{animation:sbClimb .36s var(--ei) infinite alternate}
+    @keyframes sbClimb{0%{transform:translate(-2%,0) rotate(-7deg)}100%{transform:translate(2%,-4%) rotate(7deg)}}
+    .bub{position:absolute;background:#fff;border:1px solid rgba(255,138,128,.22);box-shadow:0 1px 2px rgba(45,52,54,.04),0 8px 22px rgba(224,102,91,.12);border-radius:16px;padding:8px 12px;font-size:13px;line-height:18px;font-weight:700;color:#2D3436;white-space:nowrap;opacity:0;transform:scale(.7) translateY(6px);pointer-events:none;will-change:transform,opacity}
+    .bub::after{content:"";position:absolute;width:10px;height:10px;background:#fff;border-right:1px solid rgba(255,138,128,.22);border-bottom:1px solid rgba(255,138,128,.22);transform:rotate(45deg);border-radius:0 0 3px 0}
+    .bub.tail-bl::after{left:18px;bottom:-6px}
+    .bub.tail-r::after{right:-6px;top:50%;margin-top:-5px;transform:rotate(-45deg)}
+    .bub.tail-l::after{left:-6px;top:50%;margin-top:-5px;transform:rotate(135deg)}
+    /* 온도 재기 문항 */
+    .tq-prog{position:relative;padding-top:30px}
+    .tq-cnt{position:absolute;right:0;top:12px;font-size:11px;font-weight:700;color:#E0665B}
+    .tq-track{height:10px;border-radius:5px;background:#FFF0EE;overflow:hidden}
+    .tq-fill{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#FFAB91,#FF8A80);transform-origin:0 50%;transition:transform 600ms cubic-bezier(.22,1,.36,1);will-change:transform}
+    .tq-rider{position:absolute;left:0;right:0;bottom:6px;height:30px;transition:transform 600ms cubic-bezier(.22,1,.36,1);will-change:transform;pointer-events:none}
+    .tq-rider>div{position:absolute;left:-15px;bottom:0;width:30px;height:30px}
+    .tq-row{position:relative;display:flex;gap:8px;align-items:flex-start}
+    .tq-sb{position:relative;width:72px;height:71px;flex-shrink:0;margin-top:2px}
+    .tq-react{left:80px;top:16px;z-index:3}
+    .tq-pick{background:#FF8A80!important;border-color:#FF8A80!important;color:#fff!important;transform:scale(.98)}
+    /* 결과 온도계 */
+    .tr-top{position:relative;height:206px;text-align:left}
+    .tr-tube{position:absolute;left:34px;top:14px;width:16px;height:160px;border-radius:8px 8px 0 0;background:#FFF0EE;overflow:hidden}
+    .tr-tube i{position:absolute;left:0;right:0;bottom:0;height:160px;background:linear-gradient(to top,#FF8A80,#FFAB91);will-change:transform}
+    .tr-tube i::after{content:"";position:absolute;left:4px;top:8px;width:3px;height:60%;border-radius:2px;background:rgba(255,255,255,.45)}
+    .tr-bulb{position:absolute;left:24px;top:166px;width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#FFB3AB,#FF8A80 60%,#F26D63);box-shadow:0 0 0 5px rgba(255,138,128,.14)}
+    .tr-tk{position:absolute;left:0;width:26px;text-align:right;font-size:10px;font-weight:700;color:#B2BEC3;transform:translateY(-50%)}
+    .tr-cling{position:absolute;left:38px;top:0;width:60px;height:59px;will-change:transform}
+    .tr-cling>[data-sb-slot]{width:60px;height:59px;transform:rotate(-10deg)}
+    .tr-bub{left:-24px;top:-38px}.tr-bub::after{left:60px!important}
+    .tr-num{position:absolute;left:142px;top:40px;right:0}
+    .tr-num b{display:block;font-size:46px;line-height:1.05;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:#2D3436}
+    .tr-num b sub{font-size:22px;vertical-align:baseline;margin-left:1px}
+    .tr-band{display:inline-block;margin-top:10px;font-size:15px;font-weight:800;color:#E0665B;background:#FFF0EE;border-radius:999px;padding:4px 12px}
+    .tr-bline{font-size:13px;color:#4A5568;margin-top:8px;line-height:1.5}
+    [data-temp-scale-row]{transition:background-color .4s cubic-bezier(.22,1,.36,1)}
+    /* 오늘의 미션 카드 위 사이봇 */
+    .tm-perch{position:absolute;right:14px;top:-50px;width:72px;height:71px;z-index:3;will-change:transform}
+    .tm-perch>[data-sb-slot]{width:72px;height:71px}
+    .tm-bub{right:84px;top:-2px}
+    .tm-stamp{position:absolute;right:26px;top:58px;width:86px;height:86px;border-radius:50%;border:3px solid #FF8A80;color:#F26D63;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900;font-size:13px;letter-spacing:-.02em;background:rgba(255,255,255,.7);pointer-events:none;z-index:2;transform:rotate(-14deg)}
+    .tm-stamp i{font-style:normal;font-size:18px;line-height:1}
+    .tm-stamp::before{content:"";position:absolute;inset:4px;border-radius:50%;border:1.5px dashed rgba(255,138,128,.6)}
+    /* 오늘의 고마움 빼꼼 */
+    .tg-peek{position:absolute;right:8px;bottom:0;width:120px;height:96px;overflow:hidden;z-index:4;pointer-events:none}
+    .tg-peek>[data-sb-slot]{position:absolute;left:14px;top:0;width:92px;height:91px}
+    .tg-bub{right:118px;bottom:44px;z-index:5}
+    @media (prefers-reduced-motion:reduce){.sbx,.sbx *{animation:none!important}.tq-fill,.tq-rider{transition:none}}
   </style>
   <!-- After the page <style> so utilities win over .safe-top/.safe-bottom, matching the old CDN inject order. -->
   <link rel="stylesheet" href="./app.css" />
@@ -156,7 +237,7 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v11-9";
+      const APP_VERSION = "v11-10";
 
       // v11.6 사이봇 말풍선 문구 — 전부 여기서만 바꾼다 (Product Marketer 최종 문구). 앱 어디에도 쪽수는 넣지 않는다.
       const SAIBOT_LINES = {
@@ -169,7 +250,7 @@
         onboardingB: [
           '이건 사랑의 온도계예요. 최고 45도, 높을수록 따뜻한 사이예요.',
           '성숙·수용·갈등·해결, 네 가지 온도를 재요.',
-          '매일 서로에게 오는 미션 하나씩, 함께 하면 온도가 올라가요.'
+          '미션은 차곡차곡 쌓였다가, 다음에 잴 때 한 번에 올라요.'
         ],
         onboardingC: '지금 당신의 온도는 몇 도인가요?',
         gratitude: [
@@ -1267,6 +1348,258 @@
         `;
       }
 
+
+      // ── v11.10 사이봇 존재감 (spec v4). render()가 innerHTML로 다시 그리므로 사이봇 DOM은 자리(data-sb-slot)에 옮겨 붙여 재사용하고,
+      // 반응은 상태가 바뀐 직후 한 번만 실행한다. 감속 모드: 반복 동작 멈춤, 반응은 바로 끝 상태.
+      const SB_RM = (() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_e) { return false; } })();
+      const SBE = { out: 'cubic-bezier(.22,1,.36,1)', spring: 'cubic-bezier(.34,1.56,.64,1)', inout: 'cubic-bezier(.65,0,.35,1)' };
+      const SB_LAYERS = ['wingL', 'wingR', 'body', 'eyes', 'mouth', 'halo', 'heart', 'fx'];
+      const sbA = (t, kf, o) => (SB_RM || !t || !t.animate) ? Promise.resolve() : t.animate(kf, Object.assign({ easing: SBE.out }, o)).finished.catch(() => {});
+      const sbWait = (ms) => new Promise((r) => setTimeout(r, SB_RM ? Math.min(ms, 50) : ms));
+      function makeSaibot(w) {
+        const el = document.createElement('div');
+        el.className = 'sbx'; el.style.width = w + 'px'; el.style.height = Math.round(w * 320 / 324) + 'px';
+        el.style.setProperty('--bs', Math.max(10, Math.round(w * 0.2)) + 'px');
+        el.innerHTML = `<div class="act"><div class="idle"><div class="br">${SB_LAYERS.map((n) => `<img class="${n}" src="./saibot/${n}.png" alt="" draggable="false">`).join('')}</div></div></div><div class="burst"></div>`;
+        const q = (x) => el.querySelector(x);
+        const api = {
+          el,
+          blinkLoop() { if (SB_RM) return; const go = () => { if (el.isConnected) sbA(q('.eyes'), [{ transform: 'scaleY(1)' }, { transform: 'scaleY(.12)', offset: 0.45 }, { transform: 'scaleY(1)' }], { duration: 170, easing: SBE.inout }); setTimeout(go, 2600 + Math.random() * 1800); }; setTimeout(go, 900); },
+          enter() { return sbA(q('.act'), [{ transform: 'translateY(0) scale(0,0)', opacity: 0 }, { transform: 'translateY(-14%) scale(.86,1.14)', opacity: 1, offset: 0.42 }, { transform: 'translateY(0) scale(1.14,.86)', offset: 0.62 }, { transform: 'translateY(-5%) scale(.96,1.05)', offset: 0.8 }, { transform: 'none' }], { duration: 700 }); },
+          nod() { return sbA(q('.act'), [{ transform: 'none' }, { transform: 'translateY(4%) scale(1.04,.95)', offset: 0.3 }, { transform: 'translateY(-3%) scale(.98,1.03)', offset: 0.6 }, { transform: 'translateY(2%) scale(1.02,.98)', offset: 0.8 }, { transform: 'none' }], { duration: 480 }); },
+          clap() { el.classList.add('fast'); return sbA(q('.act'), [{ transform: 'none' }, { transform: 'translateY(-10%) scale(.96,1.05)', offset: 0.2 }, { transform: 'translateY(0) scale(1.06,.94)', offset: 0.4 }, { transform: 'translateY(-8%) scale(.97,1.04)', offset: 0.62 }, { transform: 'translateY(0) scale(1.04,.96)', offset: 0.82 }, { transform: 'none' }], { duration: 700 }).then(() => el.classList.remove('fast')); },
+          heart() { sbA(q('.heart'), [{ transform: 'scale(1)' }, { transform: 'scale(1.7)', offset: 0.35 }, { transform: 'scale(.9)', offset: 0.65 }, { transform: 'scale(1)' }], { duration: 600, easing: SBE.spring }); api.burst(['♥', '♥', '♥'], -60, 40, 0.7); return sbA(q('.act'), [{ transform: 'none' }, { transform: 'translateY(-6%) scale(1.03)', offset: 0.4 }, { transform: 'none' }], { duration: 600, easing: SBE.spring }); },
+          jump(times) { el.classList.add('fast'); const one = () => sbA(q('.act'), [{ transform: 'none' }, { transform: 'translateY(3%) scale(1.14,.84)', offset: 0.15 }, { transform: 'translateY(-34%) scale(.9,1.12)', offset: 0.45 }, { transform: 'translateY(0) scale(1.12,.86)', offset: 0.75 }, { transform: 'none' }], { duration: 640 }); let pr = one(); for (let i = 1; i < (times || 1); i++) pr = pr.then(one); return pr.then(() => el.classList.remove('fast')); },
+          burst(syms, a0, a1, dist) {
+            if (SB_RM) return; const b = q('.burst'); syms = syms || ['♥', '✦', '♥', '✦', '♥', '✦', '♥']; a0 = a0 === undefined ? -160 : a0; a1 = a1 === undefined ? -20 : a1; dist = dist || 1;
+            syms.forEach((sy, i) => { const e = document.createElement('span'); e.textContent = sy; b.appendChild(e);
+              const r = (a0 + (a1 - a0) * (syms.length > 1 ? i / (syms.length - 1) : 0.5)) * Math.PI / 180, d = (w * 0.7 + Math.random() * 12) * dist;
+              const an = e.animate([{ transform: 'translate(0,0) scale(.4)', opacity: 0 }, { transform: `translate(${Math.cos(r) * d * 0.5}px,${Math.sin(r) * d * 0.5}px) scale(1.15)`, opacity: 1, offset: 0.4 }, { transform: `translate(${Math.cos(r) * d}px,${Math.sin(r) * d}px) scale(.8)`, opacity: 0 }], { duration: 900, easing: SBE.out, fill: 'forwards' });
+              an.finished.then(() => e.remove()).catch(() => e.remove()); });
+          },
+          talk(ms) { if (SB_RM) return; const m = q('.mouth'); m.animate([{ transform: 'scale(1,1)' }, { transform: 'scale(1.15,1.9)' }, { transform: 'scale(1,1)' }], { duration: 220, iterations: Math.max(1, Math.round((ms || 880) / 220)), easing: SBE.inout }); },
+          fast(on) { el.classList.toggle('fast', !!on); }
+        };
+        return api;
+      }
+      // 말풍선 한 줄: 380ms 등장, hold 뒤 260ms 퇴장
+      function sbPop(b, text, hold) {
+        if (!b) return Promise.resolve();
+        if (text) b.textContent = text;
+        b.setAttribute('data-sb-said', text || '');
+        if (SB_RM || !b.animate) { b.style.opacity = 1; b.style.transform = 'none'; if (hold) setTimeout(() => { b.style.opacity = 0; }, hold); return Promise.resolve(); }
+        b.getAnimations().forEach((a) => a.cancel());
+        const a = b.animate([{ opacity: 0, transform: 'scale(.7) translateY(6px)' }, { opacity: 1, transform: 'scale(1.04) translateY(-1px)', offset: 0.6 }, { opacity: 1, transform: 'none' }], { duration: 380, easing: SBE.out, fill: 'forwards' });
+        if (hold) setTimeout(() => { if (b.isConnected) b.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.92) translateY(-4px)' }], { duration: 260, easing: SBE.out, fill: 'forwards' }); }, hold);
+        return a.finished.catch(() => {});
+      }
+      const sbI = {};
+      function sbGet(key, w) { let x = sbI[key]; if (!x) { x = makeSaibot(w); x.blinkLoop(); sbI[key] = x; } return x; }
+      const sbDone = new Set();
+      function sbOnce(k) { if (sbDone.has(k)) return false; sbDone.add(k); return true; }
+      function sbAfterRender() {
+        document.querySelectorAll('[data-sb-slot]').forEach((slot) => {
+          const x = sbGet(slot.getAttribute('data-sb-slot'), Number(slot.getAttribute('data-sb-w')) || 72);
+          if (x.el.parentNode !== slot) slot.prepend(x.el);
+        });
+        try { tqAfter(); trAfter(); tmAfter(); tgAfter(); } catch (_e) {}
+      }
+
+      // 1) 온도 재기 문항: 어떤 답이든 똑같이 끄덕 + 작은 반짝. 하트·박수는 영역을 끝냈을 때만.
+      const TQ_ORDER = ['gr', 'ok', 'op', 'ac'];
+      const TQ_DONE = { gr: '성숙 온도 다 쟀어요!', ok: '벌써 절반 넘었어요!', op: '하나만 더 하면 끝!', ac: '다 했어요! 고마워요' };
+      let tqShown = null, tqFresh = false, tqNext = false, tqBusy = false;
+      function tqProgress(n) {
+        const total = TEMP_QS.length;
+        const sh = tqShown == null ? n : tqShown;
+        return `
+                  <div class="tq-prog" data-temp-prog="${n}">
+                    <span class="tq-cnt">${n}/${total}</span>
+                    <div class="tq-track"><i class="tq-fill" data-tq-fill style="transform:scaleX(${sh / total})"></i></div>
+                    <div class="tq-rider" data-tq-rider style="transform:translateX(${(sh / total) * 100}%)"><div data-sb-slot="rider" data-sb-w="30"></div></div>
+                  </div>`;
+      }
+      function tqAfter() {
+        const pr = document.querySelector('[data-temp-prog]');
+        if (!pr) { tqShown = null; return; }
+        const n = Number(pr.getAttribute('data-temp-prog')), total = TEMP_QS.length;
+        if (tqShown != null && tqShown !== n) {
+          const f = pr.querySelector('[data-tq-fill]'), r = pr.querySelector('[data-tq-rider]');
+          void f.offsetWidth;
+          f.style.transform = 'scaleX(' + (n / total) + ')'; r.style.transform = 'translateX(' + ((n / total) * 100) + '%)';
+          const rd = sbI.rider;
+          if (rd && !SB_RM) { rd.fast(true); setTimeout(() => rd.fast(false), 650); sbA(rd.el.querySelector('.act'), [{ transform: 'none' }, { transform: 'translateY(-30%) rotate(8deg)', offset: 0.45 }, { transform: 'none' }], { duration: 600 }); }
+        }
+        tqShown = n;
+        if (tqFresh && sbI.quiz) { tqFresh = false; sbI.quiz.enter(); }
+        if (tqNext) {
+          tqNext = false;
+          [document.querySelector('[data-temp-bubbles]'), document.querySelector('[data-temp-opts]')].forEach((el, k) => sbA(el, [{ opacity: 0, transform: 'translateX(16px)' }, { opacity: 1, transform: 'none' }], { duration: 380, delay: k * 60, fill: 'backwards' }));
+        }
+      }
+      async function tqAnswerFx(i, btn) {
+        btn.classList.add('tq-pick');
+        await sbWait(140);
+        const x = sbI.quiz;
+        if (x) { const r = x.nod(); x.burst(['✦', '✦', '✦'], -130, -50, 0.55); await r; }
+        const it = TEMP_QS[i], last = i >= TEMP_QS.length - 1;
+        if (last || TEMP_QS[i + 1].t !== it.t) {
+          const ch = document.querySelectorAll('[data-temp-check]')[TQ_ORDER.indexOf(it.t)];
+          if (ch) {
+            ch.className = 'text-center rounded-lg py-1 text-[10.5px] font-bold border whitespace-nowrap bg-[#E8F8F0] text-[#1E8449] border-[#1E8449]/15';
+            ch.setAttribute('data-temp-check', 'done'); ch.textContent = '✓ ' + AREA_NAMES[AREA_BY_T[it.t]].replace(/ 온도$/, '');
+            sbA(ch, [{ transform: 'scale(1)' }, { transform: 'scale(1.18)', offset: 0.4 }, { transform: 'scale(1)' }], { duration: 420, easing: SBE.spring });
+          }
+          sbA(document.querySelector('[data-temp-bubbles]'), [{ opacity: 1 }, { opacity: 0.2 }], { duration: 240, fill: 'forwards' });
+          sbPop(document.querySelector('[data-tq-react]'), TQ_DONE[it.t], 1150);
+          if (x) { x.heart(); x.talk(660); await sbWait(600); x.clap(); }
+          await sbWait(800);
+        }
+        if (!last) await Promise.all([document.querySelector('[data-temp-bubbles]'), document.querySelector('[data-temp-opts]')].map((el) => sbA(el, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(-16px)' }], { duration: 220, fill: 'forwards' })));
+      }
+
+      // 2) 결과: 온도계를 타고 오르는 사이봇 (한 번만, 다시 그리면 끝 상태)
+      const TR_LINE = { '서먹해요': '같이 데워 봐요!', '미지근해요': '좋은 출발이에요!', '따뜻해요': '와, 따뜻해요!', '포근해요': '포근한 사이네요!', '뜨거워요': '와, 뜨거워요!' };
+      const trKey = (l) => 'tr:' + (l.measured_on || '') + ':' + l.total;
+      const trY = (v) => { const p = Math.min(1, Math.max(0, (v - TEMP_MIN) / (TEMP_MAX - TEMP_MIN))); return { fill: 160 * (1 - p), cling: 14 + 160 * (1 - p) - 60 * 0.55 }; };
+      function trTop(l) {
+        const v = Number(dispTemp(l.total)), played = sbDone.has(trKey(l)), y = trY(played ? v : TEMP_MIN), b = tempBand(v);
+        return `
+                  <div class="tr-top" data-temp-thermo data-temp-played="${played ? 1 : 0}">
+                    <span class="tr-tk" style="top:174px">30</span><span class="tr-tk" style="top:121px">35</span><span class="tr-tk" style="top:67px">40</span><span class="tr-tk" style="top:14px">45</span>
+                    <div class="tr-tube"><i data-tr-fill style="transform:translateY(${y.fill.toFixed(1)}px)"></i></div><div class="tr-bulb"></div>
+                    <div class="tr-cling" data-tr-cling style="transform:translateY(${y.cling.toFixed(1)}px)"><div data-sb-slot="result" data-sb-w="60"></div><div class="bub tail-bl tr-bub" data-tr-bub></div></div>
+                    <div class="tr-num"><b data-temp-total><span data-tr-n>${played ? v.toFixed(1) : TEMP_MIN.toFixed(1)}</span><sub>°C</sub></b><span class="tr-band" data-temp-band style="${played ? '' : 'opacity:0;transform:scale(.6)'}">${esc(b.name)}</span><p class="tr-bline" data-temp-band-line style="${played ? '' : 'opacity:0'}">${esc(b.line)}</p></div>
+                  </div>`;
+      }
+      function trAfter() {
+        const top = document.querySelector('[data-temp-thermo]');
+        const l = tempLast();
+        if (!top || !l || top.getAttribute('data-temp-played') === '1' || !sbOnce(trKey(l))) return;
+        const v = Number(dispTemp(l.total)), b = tempBand(v), x = sbI.result;
+        const fill = top.querySelector('[data-tr-fill]'), cling = top.querySelector('[data-tr-cling]'), num = top.querySelector('[data-tr-n]');
+        const band = top.querySelector('[data-temp-band]'), bline = top.querySelector('[data-temp-band-line]'), bub = top.querySelector('[data-tr-bub]');
+        const place = (t) => { const y = trY(t); fill.style.transform = 'translateY(' + y.fill.toFixed(1) + 'px)'; cling.style.transform = 'translateY(' + y.cling.toFixed(1) + 'px)'; num.textContent = t.toFixed(1); };
+        const hit = () => document.querySelectorAll('[data-temp-scale-row]').forEach((r) => { if (r.getAttribute('data-band') === b.name) { r.classList.remove('bg-white'); r.classList.add('bg-[#FFF0EE]'); } });
+        if (x) x.el.querySelector('.act').style.opacity = SB_RM ? '' : '0';
+        (async () => {
+          await sbWait(400);
+          if (x) { x.el.querySelector('.act').style.opacity = ''; x.enter(); }
+          await sbWait(700);
+          if (x && !SB_RM) { x.el.classList.add('climb'); x.fast(true); }
+          await new Promise((res) => { if (SB_RM) { place(v); return res(); } const t0 = performance.now(); const f = (t) => { const k = Math.min(1, (t - t0) / 2400); place(TEMP_MIN + (v - TEMP_MIN) * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
+          if (x) { x.el.classList.remove('climb'); x.fast(false); }
+          sbPop(bub, TR_LINE[b.name] || '', 2200);
+          if (x) { x.talk(660); x.jump(2); setTimeout(() => x.burst(), 300); }
+          if (SB_RM) { band.style.opacity = ''; band.style.transform = ''; } else band.animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.08)', offset: 0.6 }, { opacity: 1, transform: 'none' }], { duration: 420, easing: SBE.out, fill: 'forwards' });
+          await sbWait(300);
+          if (SB_RM) bline.style.opacity = ''; else bline.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 400, easing: SBE.out, fill: 'forwards' });
+          hit();
+          top.setAttribute('data-temp-played', '1');
+        })();
+      }
+
+      // 3) 오늘의 미션: 사이봇이 미완료 카드 하나를 날아와 건네고, 했어요를 누르면 도장
+      let tmPerchId = null, tmCountPop = false, tmCheer = false;
+      const tmJust = {};
+      function tmPickPerch(list) {
+        const cur = tmPerchId && list.find((m) => m.id === tmPerchId);
+        if (cur && (!cur.accepted || (tmJust[cur.id] && Date.now() - tmJust[cur.id] < 8000))) return tmPerchId;
+        const p = list.find((m) => !m.accepted && (m.targetRole === state.role || m.self));
+        tmPerchId = p ? p.id : null;
+        return tmPerchId;
+      }
+      function tmAfter() {
+        const perch = document.querySelector('[data-mission-perch]');
+        if (!perch) return;
+        const card = perch.closest('[data-mission-card]'), id = card && card.getAttribute('data-mission-card'), x = sbI.perch;
+        const body = card && card.querySelector('[data-tm-body]'), bub = perch.querySelector('[data-tm-bub]');
+        if (tmCountPop) { tmCountPop = false; sbA(document.querySelector('[data-mission-count]'), [{ transform: 'scale(1)' }, { transform: 'scale(1.25)', offset: 0.4 }, { transform: 'scale(1)' }], { duration: 420, easing: SBE.spring }); }
+        if (tmCheer) { tmCheer = false; setTimeout(() => { sbPop(document.querySelector('[data-tm-bub]'), '잘했어요! 차곡차곡 쌓아 둘게요', 2200); if (sbI.perch) sbI.perch.talk(880); }, 200); }
+        if (!id || card.getAttribute('data-mission-done') === '1' || !sbOnce('tm-deliver:' + id)) return;
+        (async () => {
+          if (!SB_RM) {
+            body.style.opacity = 0;
+            if (x) x.fast(true);
+            await sbA(perch, [{ transform: 'translate(60px,-150px) rotate(14deg)', opacity: 0 }, { transform: 'translate(10px,-24px) rotate(-6deg)', opacity: 1, offset: 0.7 }, { transform: 'none', opacity: 1 }], { duration: 800 });
+            if (x) { x.fast(false); sbA(x.el.querySelector('.act'), [{ transform: 'scale(1.12,.86)' }, { transform: 'scale(.97,1.04)', offset: 0.5 }, { transform: 'none' }], { duration: 380, easing: SBE.spring }); }
+          }
+          await sbWait(200);
+          sbPop(perch.isConnected ? bub : document.querySelector('[data-tm-bub]'), '오늘 미션 가져왔어요!', 2200); if (x) x.talk(880);
+          await sbWait(200);
+          if (!SB_RM) await sbA(body, [{ opacity: 0, transform: 'translate(10px,-10px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 450 });
+          body.style.opacity = '';
+        })();
+      }
+      async function tmDoneFx(id, btn) {
+        const card = btn.closest('[data-mission-card]');
+        if (!card || !card.querySelector('[data-mission-perch]')) return false;
+        sbA(btn, [{ transform: 'none' }, { transform: 'scale(.96)' }, { transform: 'none' }], { duration: 140 });
+        const x = sbI.perch;
+        if (x) { x.jump(1); setTimeout(() => x.burst(), 200); }
+        await sbWait(260);
+        const st = document.createElement('div'); st.className = 'tm-stamp'; st.setAttribute('data-mission-stamp', ''); st.innerHTML = '<i>♥</i>미션 완료';
+        card.appendChild(st);
+        sbA(st, [{ opacity: 0, transform: 'rotate(-14deg) scale(1.8)' }, { opacity: 1, transform: 'rotate(-14deg) scale(.92)', offset: 0.7 }, { opacity: 1, transform: 'rotate(-14deg) scale(1)' }], { duration: 380 });
+        await sbWait(260);
+        sbA(card, [{ transform: 'none' }, { transform: 'translateY(2px) scale(.995)' }, { transform: 'none' }], { duration: 220 });
+        await sbWait(40);
+        tmJust[id] = Date.now(); tmCountPop = true; tmCheer = true;
+        return true;
+      }
+
+      // 4) 오늘의 고마움: 화면 오른쪽 아래에서 빼꼼 (보낸 날은 안 띄움, 스크롤 중에는 숨김)
+      const TG_Y = { hidden: 'translateY(100%)', peek: 'translateY(40%) rotate(-8deg)', up: 'translateY(4%) rotate(0deg)' };
+      let tgPos = 'hidden', tgHold = false, tgScrollT = null;
+      function tgMove(to, ms, ease) {
+        const x = sbI.peek; if (!x) return Promise.resolve();
+        const from = TG_Y[tgPos]; tgPos = to; x.el.style.transform = TG_Y[to];
+        document.querySelector('[data-gratitude-peek]') && document.querySelector('[data-gratitude-peek]').setAttribute('data-pos', to);
+        return sbA(x.el, [{ transform: from }, { transform: TG_Y[to] }], { duration: ms, easing: ease || SBE.out });
+      }
+      function tgShow() { return state.activeTab === 'missions' && state.partnerJoined && (tgHold || !gratitudeSentToday()); }
+      function tgAfter() {
+        const pk = document.querySelector('[data-gratitude-peek]');
+        if (!pk) return;
+        const x = sbI.peek; if (x) x.el.style.transform = TG_Y[tgPos];
+        pk.setAttribute('data-pos', tgPos);
+        const sc = document.querySelector('[data-missions-scroll]');
+        if (sc && !sc.__tg) {
+          sc.__tg = true;
+          sc.addEventListener('scroll', () => {
+            if (tgHold || tgPos === 'hidden' && !tgScrollT) return;
+            if (tgPos === 'peek') tgMove('hidden', 200);
+            clearTimeout(tgScrollT);
+            tgScrollT = setTimeout(() => { tgScrollT = null; if (document.querySelector('[data-gratitude-peek]') && tgPos === 'hidden') tgMove('peek', 420, SBE.spring); }, 500);
+          }, { passive: true });
+        }
+        if (!sbOnce('tg-peek:' + kstDay())) return;
+        setTimeout(async () => {
+          if (!document.querySelector('[data-gratitude-peek]') || tgPos !== 'hidden') return;
+          if (x) x.fast(true);
+          await tgMove('peek', 600, SBE.spring);
+          if (x) x.fast(false);
+          await sbWait(150);
+          sbPop(document.querySelector('[data-tg-bub]'), '한 줄이면 충분해요', 1800); if (x) x.talk(660);
+        }, SB_RM ? 0 : 700);
+      }
+      function tgPicked() {
+        const x = sbI.peek; if (!x || !document.querySelector('[data-gratitude-peek]') || tgPos === 'hidden') return;
+        x.nod(); sbPop(document.querySelector('[data-tg-bub]'), '좋아요, 그대로 보내도 돼요', 1900); x.talk(660);
+      }
+      async function tgSentFx() {
+        const x = sbI.peek; if (!x || !document.querySelector('[data-gratitude-peek]')) { tgHold = false; return; }
+        tgHold = true;
+        try {
+          await tgMove('up', 420, SBE.spring);
+          x.heart(); x.burst(['♥', '✦', '♥', '✦', '♥'], -150, -30); sbPop(document.querySelector('[data-tg-bub]'), '보냈어요! 💛', 1800); x.talk(440);
+          await sbWait(1700);
+          await tgMove('peek', 560);
+          await sbWait(300);
+          await tgMove('hidden', 300);
+        } finally { tgHold = false; }
+      }
+
       // ── v11.7 첫 화면 온보딩 (spec v3). 레이어 사이봇 + 말풍선 + 온도계 + 질문 카드 → 카카오 버튼.
       // 미션 1개 완료 시 오르는 온도 = private.temp_config.mission_step (운영 값 0.3, 다음 측정 때 반영).
       const ONB_KEY = 'urisai_onboard_v3';
@@ -1274,6 +1607,7 @@
       let onbCtl = null;
       let onbPreview = false; // v11.9 검수: 로그인한 채로 온보딩 다시 보기
       let reviewBusy = false;
+      const tmBusy = new Set();
       function onbSeen() { try { return Boolean(localStorage.getItem(ONB_KEY)); } catch (_e) { return false; } }
       function onbMarkSeen() { try { localStorage.setItem(ONB_KEY, '1'); } catch (_e) {} }
       function onbHtml() {
@@ -1298,6 +1632,8 @@
               <div class="areas2">${areas}</div>
               <div class="hint2" data-onb="hint">${esc(AREA_HINTS.open)}</div>
               <div class="mchip" data-onb="mchip"><svg viewBox="0 0 24 24" fill="none" stroke="#FF8A80" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></svg>미션 완료</div>
+              <div class="jar" data-onb="jar"><i></i><i></i><i></i><i></i><i></i></div><div class="jlbl" data-onb="jsum">+0.0°C</div>
+              <div class="cal" data-onb="cal"><div class="ct">다음 측정</div><span class="cn" data-onb="cn">오늘</span><span class="cs" data-onb="cs">&nbsp;</span></div>
               <div class="plus" data-onb="plus">+${MISSION_STEP_C.toFixed(1)}°C</div>
             </div>
             <div class="talk" data-onb="talk"></div>
@@ -1554,18 +1890,48 @@
           await p2; if (done()) return;
           const p3 = say(B[2], 'B3');
           await sleep(900);
-          let cur = 36.5;
-          const mc = $o('mchip'), pl = $o('plus');
-          for (let k = 0; k < 2 && !done(); k++) {
-            anim(mc, [{ opacity: 0, transform: 'scale(.6) translateY(8px)' }, { opacity: 1, transform: 'scale(1.06) translateY(-2px)', offset: 0.5 }, { opacity: 1, transform: 'scale(1)' }], { duration: 380, easing: E.spring, fill: 'forwards' });
-            await sleep(320);
-            anim(pl, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)', offset: 0.3 }, { opacity: 1, transform: 'translateY(-6px)', offset: 0.75 }, { opacity: RM ? 1 : 0, transform: 'translateY(-14px)' }], { duration: 1100, easing: E.out, fill: 'forwards' });
-            await countUp(cur + MISSION_STEP_C, 600, cur); cur += MISSION_STEP_C;
-            root.setAttribute('data-mission-tick', String(k + 1));
-            await sleep(380);
-            if (k === 0 || !RM) anim(mc, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.8) translateY(-6px)' }], { duration: 240, easing: E.out, fill: 'forwards' });
-            await sleep(320);
+          // v11.10: 영역 칩이 빠지고 그 자리에 '미션 병'. 온도 숫자는 그대로 두고 하트(미션)만 쌓였다가, 다음 측정 때 한 번에 오른다
+          const ar2 = root.querySelector('.areas2'), jar = $o('jar'), jl = $o('jsum'), cal = $o('cal'), mc = $o('mchip'), pl = $o('plus');
+          anim(ar2, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-6px) scale(.96)' }], { duration: 300, easing: E.out, fill: 'forwards' });
+          anim($o('hint'), [{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: E.out, fill: 'forwards' });
+          await sleep(220);
+          anim(jar, [{ opacity: 0, transform: 'scale(.8)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: E.out, fill: 'forwards' });
+          anim(jl, [{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: E.out, fill: 'forwards' });
+          await sleep(380); if (done()) return;
+          const SLOT = [[9, 50], [35, 50], [22, 30], [9, 10], [35, 10]];
+          const hs = [...jar.querySelectorAll('i')];
+          for (let k = 0; k < 5 && !done(); k++) {
+            const h = hs[k]; h.textContent = '♥'; h.style.left = SLOT[k][0] + 'px'; h.style.top = SLOT[k][1] + 'px';
+            anim(h, [{ opacity: 0, transform: 'translateY(-46px) scale(.6)' }, { opacity: 1, transform: 'translateY(2px) scale(1.1)', offset: 0.7 }, { opacity: 1, transform: 'none' }], { duration: 360, easing: E.out, fill: 'forwards' });
+            if (k === 0) anim(mc, [{ opacity: 0, transform: 'scale(.6) translateY(8px)' }, { opacity: 1, transform: 'scale(1.06) translateY(-2px)', offset: 0.5 }, { opacity: 1, transform: 'none' }], { duration: 380, easing: E.spring, fill: 'forwards' });
+            jl.textContent = '+' + (MISSION_STEP_C * (k + 1)).toFixed(1) + '°C';
+            root.setAttribute('data-mission-stack', String(k + 1));
+            await sleep(240);
           }
+          anim(mc, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.8) translateY(-6px)' }], { duration: 240, easing: E.out, fill: 'forwards' });
+          await sleep(200); if (done()) return;
+          // 달력: 오늘 → 7일 뒤 → 14일 뒤
+          anim(cal, [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1.06)', offset: 0.6 }, { opacity: 1, transform: 'none' }], { duration: 320, easing: E.out, fill: 'forwards' });
+          await sleep(260);
+          const cn = $o('cn'), cs = $o('cs');
+          for (const [n, sub] of [['7', '일 뒤'], ['14', '일 뒤']]) {
+            await anim(cn, [{ transform: 'rotateX(0)', opacity: 1 }, { transform: 'rotateX(90deg)', opacity: 0.3 }], { duration: 110, easing: E.inout });
+            cn.textContent = n; cs.textContent = sub;
+            await anim(cn, [{ transform: 'rotateX(-90deg)', opacity: 0.3 }, { transform: 'rotateX(0)', opacity: 1 }], { duration: 150, easing: E.out });
+          }
+          root.setAttribute('data-mission-cal', '14');
+          await sleep(160); if (done()) return;
+          // 다음 측정: 병의 하트가 온도계 구슬로 날아가고, 숫자가 한 번만 오름 (+0.3 × 5 = 최대 +1.5)
+          const bulb = root.querySelector('.bulb2').getBoundingClientRect(), kk = (st.getBoundingClientRect().width / 390) || 1;
+          hs.forEach((h, k) => { const r = h.getBoundingClientRect(); const dx = (bulb.left + bulb.width / 2 - (r.left + r.width / 2)) / kk, dy = (bulb.top + bulb.height / 2 - (r.top + r.height / 2)) / kk;
+            anim(h, [{ opacity: 1, transform: 'none' }, { opacity: 1, transform: `translate(${dx * 0.5}px,${dy * 0.5 - 18}px) scale(1.1)`, offset: 0.5 }, { opacity: 0, transform: `translate(${dx}px,${dy}px) scale(.5)` }], { duration: 520, delay: k * 50, easing: E.inout, fill: 'forwards' }); });
+          anim(jl, [{ opacity: 1 }, { opacity: 0 }], { duration: 300, delay: 200, easing: E.out, fill: 'forwards' });
+          await sleep(560);
+          pl.textContent = '+' + (MISSION_STEP_C * 5).toFixed(1) + '°C';
+          anim(pl, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)', offset: 0.3 }, { opacity: 1, transform: 'translateY(-6px)', offset: 0.75 }, { opacity: RM ? 1 : 0, transform: 'translateY(-14px)' }], { duration: 1200, easing: E.out, fill: 'forwards' });
+          await countUp(38.0, 800, 36.5);
+          root.setAttribute('data-mission-tick', '1');
+          await sleep(300);
           await p3;
         };
         (async () => {
@@ -1730,9 +2096,8 @@
                   <span class="text-[11px] font-bold text-[#FF8A80] bg-[#FFF0EE] px-2.5 py-0.5 rounded-full">오늘의 고마움</span>
                 </div>
                 <h3 class="text-[15px] font-extrabold text-[#2D3436] mb-1.5">${esc(state.partnerName)}님에게 고마운 거 하나</h3>
-                <div class="flex items-start gap-2 mt-2" data-saibot-bubble="gratitude">
-                  <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
-                  <div class="flex-1 min-w-0 bg-[#FFF9F5] rounded-2xl rounded-tl-sm px-3.5 py-2.5 border border-[#FF8A80]/15 space-y-1">
+                <div class="mt-2" data-saibot-bubble="gratitude">
+                  <div class="bg-[#FFF9F5] rounded-2xl rounded-tl-sm px-3.5 py-2.5 border border-[#FF8A80]/15 space-y-1">
                     ${SAIBOT_LINES.gratitude.map((l) => `<p class="text-[13px] text-[#4A5568] leading-relaxed">${esc(l)}</p>`).join('')}
                   </div>
                 </div>
@@ -1774,15 +2139,15 @@
         // 현재 내 역할에게 온 미션 + 공통 데일리 팁만 노출 (상대방 불만 0%)
         const visibleMissions = withSelfMissions(state.missions.filter((m) => m.targetRole === 'BOTH' || m.targetRole === state.role));
         const pendingCount = visibleMissions.filter((m) => !m.accepted).length;
+        const perchId = tmPickPerch(visibleMissions);
 
         return `
-          <div class="flex-1 overflow-y-auto px-4 py-4 space-y-3.5">
+          <div class="flex-1 overflow-y-auto px-4 py-4 space-y-3.5" data-missions-scroll>
             ${waitingBanner()}
             <div class="flex items-center justify-between px-1 pt-1">
               <h2 class="text-sm font-extrabold text-[#2D3436]">우리사이 온도를 데우는 오늘의 미션</h2>
               <span class="text-xs font-semibold text-[#636E72]">대기 ${pendingCount}개</span>
             </div>
-            ${pendingCount > 0 ? '<p class="px-1 -mt-2 text-xs text-[#636E72]" data-mission-reminder>오늘 우리사이 온도를 데울 차례예요 🌡️ 미션 하나면 충분해요.</p>' : ''}
 
             ${visibleMissions.length === 0 ? `
               <div class="bg-white rounded-2xl p-6 border border-[#FF8A80]/15 text-center">
@@ -1790,10 +2155,13 @@
                 <p class="text-xs text-[#9AA5A9] mt-1.5 leading-relaxed">사이봇 비밀방에서 마음을 전하면,<br />상대방에게만 따뜻한 미션으로 도착해요.</p>
               </div>
             ` : visibleMissions.map((m) => `
-              <div class="animate-pop bg-white rounded-2xl p-4 border ${!m.accepted && m.targetRole === state.role ? 'border-[#FF8A80] ring-2 ring-[#FF8A80]/15' : 'border-[#2D3436]/8'} shadow-[0_4px_16px_rgba(45,52,54,0.05)] relative">
+              <div class="${m.id === perchId ? '' : 'animate-pop '}bg-white rounded-2xl p-4 border ${!m.accepted && m.targetRole === state.role ? 'border-[#FF8A80] ring-2 ring-[#FF8A80]/15' : 'border-[#2D3436]/8'} shadow-[0_4px_16px_rgba(45,52,54,0.05)] relative" data-mission-card="${esc(m.id)}" data-mission-done="${m.accepted ? 1 : 0}"${m.id === perchId ? ' style="margin-top:44px"' : ''}>
+                ${m.id === perchId ? '<div class="tm-perch" data-mission-perch><div data-sb-slot="perch" data-sb-w="72"></div><div class="bub tail-r tm-bub" data-tm-bub></div></div>' : ''}
+                ${m.accepted && tmJust[m.id] ? '<div class="tm-stamp" data-mission-stamp><i>♥</i>미션 완료</div>' : ''}
+                <div data-tm-body>
                 <div class="flex items-center justify-between mb-2">
                   <span class="text-[11px] font-bold text-[#FF8A80] bg-[#FFF0EE] px-2.5 py-0.5 rounded-full">온도 미션</span>
-                  <span class="text-[10px] text-[#9AA5A9]">${esc(m.time)}</span>
+                  <span class="text-[10px] text-[#9AA5A9]"${m.id === perchId ? ' style="margin-right:76px"' : ''}>${esc(m.time)}</span>
                 </div>
                 <h3 class="text-[15px] font-extrabold text-[#2D3436] mb-1.5">${esc(m.title)}</h3>
                 <p class="text-[13px] text-[#4A5568] leading-relaxed">${esc(m.message)}</p>
@@ -1811,6 +2179,7 @@
                     </div>
                   `}
                 </div>
+                </div>
               </div>
             `).join('')}
 
@@ -1823,7 +2192,7 @@
                   <p class="text-[11px] font-semibold text-white/85">${esc(state.myName)} ♥ ${esc(state.partnerName)} · 코드 ${esc(state.coupleCode)}</p>
                   <p class="text-base font-extrabold mt-0.5">우리사이 온도 <span data-mission-warmth-num>${dispTemp(shownTemp())}°C</span></p>
                 </div>
-                <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-extrabold text-sm">
+                <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-extrabold text-sm" data-mission-count>
                   ${state.completedCount}회
                 </div>
               </div>
@@ -2262,7 +2631,7 @@
           const item = TEMP_QS[i];
           inner = `
                 <div class="${CARD} space-y-4">
-                  ${tempProgress(i + 1)}
+                  ${tqProgress(i + 1)}
                   ${(() => {
                     const ORDER = ['gr', 'ok', 'op', 'ac'];
                     const cur = ORDER.indexOf(item.t);
@@ -2270,19 +2639,21 @@
                     const intro = SAIBOT_LINES.tempArea[item.t];
                     const bubble = (inner, attr) => `<div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-sm" ${attr || ''}>${inner}</div>`;
                     return `
-                  <div class="flex items-center gap-2.5" data-temp-checklist>
-                    <img src="${AVATAR_SRC}" alt="사이봇" class="w-11 h-11 rounded-2xl object-cover border border-[#FF8A80]/30 shrink-0" />
-                    <div class="flex-1 grid grid-cols-4 gap-1">
+                  <div data-temp-checklist>
+                    <div class="grid grid-cols-4 gap-1">
                       ${ORDER.map((t, k) => `<span class="text-center rounded-lg py-1 text-[10.5px] font-bold border whitespace-nowrap ${k < cur ? 'bg-[#E8F8F0] text-[#1E8449] border-[#1E8449]/15' : k === cur ? 'bg-[#FFF0EE] text-[#E0665B] border-[#FF8A80]/40' : 'bg-white text-[#B2BEC3] border-[#2D3436]/8'}" data-temp-check="${k < cur ? 'done' : k === cur ? 'now' : 'todo'}">${k < cur ? '✓ ' : ''}${esc(AREA_NAMES[AREA_BY_T[t]].replace(/ 온도$/, ''))}</span>`).join('')}
                     </div>
                   </div>
-                  <div class="space-y-1.5" data-temp-bubbles>
+                  <div class="tq-row">
+                  <div class="tq-sb"><div data-sb-slot="quiz" data-sb-w="72"></div><div class="bub tail-l tq-react" data-tq-react></div></div>
+                  <div class="flex-1 min-w-0 space-y-1.5" data-temp-bubbles>
                     ${i === 0 ? bubble(`<p class="text-[13px] text-[#2D3436] leading-relaxed">${esc(SAIBOT_LINES.tempStart)}</p>`, 'data-temp-start') : ''}
                     ${firstOfArea && intro ? bubble(`<p class="text-[13px] text-[#4A5568] leading-relaxed">${esc(intro.line)}</p>${intro.book ? '<p class="text-[11px] text-[#9AA5A9] mt-0.5" data-temp-cite>도서 『긍정학개론』 중에서</p>' : ''}`, 'data-temp-intro="' + item.t + '"') : ''}
                     ${bubble(`<h2 class="text-[16px] font-extrabold text-[#2D3436] leading-snug">${esc(item.q)}</h2>`, 'data-temp-question')}
+                  </div>
                   </div>`;
                   })()}
-                  <div class="space-y-2.5">
+                  <div class="space-y-2.5" data-temp-opts>
                     ${item.o.map((label, k) => `<button type="button" data-action="temp-answer" data-i="${k}" class="w-full py-3.5 px-4 rounded-2xl bg-[#FFF9F5] active:bg-[#FFF0EE] border border-[#FF8A80]/30 text-sm font-bold text-[#2D3436] transition-colors">${esc(label)}</button>`).join('')}
                   </div>
                 </div>`;
@@ -2316,11 +2687,10 @@
           const pay = reportVisible() && !state.report.paid ? renderPayArea() : '';
           inner = `
                 <div class="${CARD} space-y-3.5 text-center">
-                  <p class="pt-2 flex items-baseline justify-center gap-2 whitespace-nowrap"><span class="text-5xl font-extrabold text-[#2D3436]" data-temp-total>${dispTemp(l.total)}°C</span><span class="text-base font-extrabold text-[#E0665B]" data-temp-band>${esc(tempBand(dispTemp(l.total)).name)}</span></p>
-                  <p class="text-[13px] text-[#4A5568] leading-relaxed -mt-1.5" data-temp-band-line>${esc(tempBand(dispTemp(l.total)).line)}</p>
+                  ${trTop(l)}
                   <div class="rounded-2xl border border-[#FF8A80]/20 overflow-hidden text-left" data-temp-scale>
-                    ${TEMP_BANDS.map((b, i) => { const hi = i === 0 ? TEMP_MAX : TEMP_BANDS[i - 1].min - 1; const on = tempBand(dispTemp(l.total)) === b; return `
-                    <div class="flex items-start gap-2.5 px-3 py-2 ${i ? 'border-t border-[#FF8A80]/10' : ''} ${on ? 'bg-[#FFF0EE]' : 'bg-white'}" data-temp-scale-row>
+                    ${TEMP_BANDS.map((b, i) => { const hi = i === 0 ? TEMP_MAX : TEMP_BANDS[i - 1].min - 1; const on = tempBand(dispTemp(l.total)) === b && sbDone.has(trKey(l)); return `
+                    <div class="flex items-start gap-2.5 px-3 py-2 ${i ? 'border-t border-[#FF8A80]/10' : ''} ${on ? 'bg-[#FFF0EE]' : 'bg-white'}" data-temp-scale-row data-band="${esc(b.name)}">
                       <span class="shrink-0 w-[52px] text-[11px] font-bold text-[#FF8A80] pt-px">${b.min}~${hi}도</span>
                       <span class="shrink-0 w-[64px] text-[12px] font-extrabold text-[#2D3436]">${esc(b.name)}</span>
                       <span class="text-[12px] text-[#636E72] leading-snug">${esc(b.line)}</span>
@@ -2573,8 +2943,9 @@
           </header>
 
           <!-- 메인 탭 뷰 -->
-          <main class="flex-1 flex flex-col min-h-0">
+          <main class="flex-1 flex flex-col min-h-0 relative">
             ${state.activeTab === 'missions' ? renderMissionsTab() : state.activeTab === 'saibot' ? renderSaibotTab() : renderWarmthTab()}
+            ${tgShow() ? '<div class="tg-peek" data-gratitude-peek><div data-sb-slot="peek" data-sb-w="92"></div></div><div class="bub tail-r tg-bub" data-tg-bub></div>' : ''}
           </main>
 
           <!-- 하단 모바일 네비게이션 바 -->
@@ -2602,6 +2973,7 @@
 
         if (state.activeTab === 'warmth' && lastRenderedTab !== 'warmth') startWarmthMotion();
         lastRenderedTab = state.activeTab;
+        sbAfterRender();
       }
 
       // 이벤트 위임
@@ -2816,6 +3188,12 @@
         } else if (action === 'accept-mission') {
           const id = btn.getAttribute('data-id');
           const selfM = (state.selfMissions || []).find((m) => m.id === id);
+          const anyM = selfM || state.missions.find((m) => m.id === id);
+          if (!anyM || anyM.accepted || anyM.accepting || tmBusy.has(id)) return;
+          tmBusy.add(id);
+          let fx = false;
+          try { fx = await tmDoneFx(id, btn); } catch (_e) {}
+          tmBusy.delete(id);
           if (selfM) {
             if (selfM.accepted || selfM.accepting) return;
             selfM.accepting = true; selfM.accepted = true; render();
@@ -2824,7 +3202,7 @@
               selfM.accepted = Boolean(r && r.accepted);
               selfM.accepting = false;
               render();
-              showToast('미션 완료! 다음에 잴 때 온도에 담겨요 💛');
+              if (!fx) showToast('미션 완료! 다음에 잴 때 온도에 담겨요 💛');
             } catch (_e) {
               selfM.accepting = false; selfM.accepted = false; render();
               showToast('잠시 후 다시 시도해 주세요');
@@ -2868,7 +3246,7 @@
             mission.accepting = false;
             saveState();
             render();
-            showToast('미션 완료! 다음에 잴 때 온도에 담겨요 💛');
+            if (!fx) showToast('미션 완료! 다음에 잴 때 온도에 담겨요 💛');
           } catch (_e) {
             mission.accepting = false;
             mission.accepted = false;
@@ -2977,7 +3355,7 @@
           hideToast();
           if (f.status === 'done') { if (!tempLast()) return; state.tempView = 'result'; }
           else if (f.status === 'waiting') state.tempView = 'wait';
-          else { state.tempView = 'question'; state.tempIdx = 0; state.tempAnswers = []; }
+          else { state.tempView = 'question'; state.tempIdx = 0; state.tempAnswers = []; tqShown = null; tqFresh = true; }
           render();
           if (state.tempView !== 'question' && await refreshTemp(true)) render();
           if (state.tempView === 'result' && paywallOn() && await refreshPaywall(true)) render();
@@ -2985,10 +3363,15 @@
           state.tempView = null;
           render();
         } else if (action === 'temp-answer') {
-          if (state.tempView !== 'question' || state.busy) return;
+          if (state.tempView !== 'question' || state.busy || tqBusy) return;
           const i = state.tempIdx || 0;
-          state.tempAnswers[i] = Number(btn.getAttribute('data-i')) || 0;
-          if (i < TEMP_QS.length - 1) { state.tempIdx = i + 1; render(); return; }
+          const pick = Number(btn.getAttribute('data-i')) || 0;
+          tqBusy = true;
+          try { await tqAnswerFx(i, btn); } catch (_e) {}
+          tqBusy = false;
+          if (state.tempView !== 'question' || (state.tempIdx || 0) !== i) return;
+          state.tempAnswers[i] = pick;
+          if (i < TEMP_QS.length - 1) { state.tempIdx = i + 1; tqNext = true; render(); return; }
           state.busy = true;
           try {
             const f = await rpc('submit_temp', { p_answers: state.tempAnswers.slice(0, TEMP_QS.length) });
@@ -3134,6 +3517,7 @@
           state.gratitudeParts = gratitudePartsFor(i);
           render();
           focusGratitudeFill();
+          if (i !== -1) tgPicked();
         } else if (action === 'send-gratitude') {
           if (gratitudeSentToday() || sendingGratitude) return;
           const sentence = currentGratitudeSentence();
@@ -3281,7 +3665,9 @@
         try { localStorage.setItem(gratitudeKey(), JSON.stringify({ day: kstDay(), bump: bump, streak: streak })); } catch (_e) {}
         state.gratitudeIdx = 0;
         state.gratitudeParts = gratitudePartsFor(0);
+        tgHold = true;
         render();
+        tgSentFx();
         if (bump > 0) startWarmthBump(prev);
       }
 
