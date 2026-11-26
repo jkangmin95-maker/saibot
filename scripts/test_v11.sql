@@ -462,6 +462,13 @@ select pg_temp.ok('qty 2 item -> one 60-day pass stacking on the 10 days left (7
   and (select count(*) = 1 and bool_and(days = 60) from private.couple_passes where ref = 'Q2'));
 select private.set_couple_paid((select v from t_v where k = 'code'), false, 'portone', 'Q2');
 select pg_temp.ok('refund of the qty 2 item takes back all its 60 days -> 10 days left', pg_temp.until() = now() + interval '10 days');
+insert into public.couples(code) values ('OTHRC');
+insert into private.couple_entitlements(couple_code, pay_code) values ('OTHRC', 'UR-ZZZZZ2');
+select pg_temp.raises('an order ref of another couple cannot be reused (no move, no second pass)',
+  'select private.set_couple_paid(''UR-ZZZZZ2'', true, ''portone'', ''P2'')', 'ref_belongs_to_other_couple');
+select pg_temp.ok('... OTHRC got nothing, P2 still with c1', not exists (select 1 from private.couple_passes where couple_code = 'OTHRC')
+  and (select couple_code = (select v from t_v where k = 'c1') from private.couple_passes where ref = 'P2'));
+delete from public.couples where code = 'OTHRC';
 select pg_temp.raises('days outside 1..366 rejected', 'select private.set_couple_paid((select v from t_v where k = ''code''), true, ''portone'', ''Q99'', 367)', 'bad_days');
 select private.set_couple_paid((select v from t_v where k = 'code'), true, 'portone', 'P3');
 select pg_temp.ok('re-paid P3 (same ref) comes back -> 40 days', pg_temp.until() = now() + interval '40 days'

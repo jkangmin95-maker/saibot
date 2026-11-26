@@ -201,6 +201,8 @@ begin
       insert into private.couple_passes(couple_code, source, ref, days) values (e.couple_code, v_src, v_ref, v_days)
       on conflict (source, ref) where ref is not null do update set revoked_at = null, days = excluded.days
         where couple_passes.couple_code = excluded.couple_code;
+      -- the same order ref already belongs to another couple: never move or duplicate it
+      if not found then raise exception 'ref_belongs_to_other_couple' using errcode = 'P0001'; end if;
     end if;
   elsif v_ref is null then
     update private.couple_passes set revoked_at = now() where couple_code = e.couple_code and revoked_at is null;
