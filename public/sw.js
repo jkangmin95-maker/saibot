@@ -1,5 +1,6 @@
-const CACHE_NAME = 'urisai-pwa-v11-6';
-const ASSETS = ['./manifest.json', './icon-192.png', './icon-512.png', './og.png', './app.css'];
+const CACHE_NAME = 'urisai-pwa-v11-7';
+const ASSETS = ['./manifest.json', './icon-192.png', './icon-512.png', './og.png', './app.css',
+  './saibot/body.png', './saibot/eyes.png', './saibot/mouth.png', './saibot/wingL.png', './saibot/wingR.png', './saibot/halo.png', './saibot/heart.png', './saibot/fx.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
