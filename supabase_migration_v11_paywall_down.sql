@@ -222,6 +222,7 @@ drop function if exists private.take_secret_ai_call();
 drop function if exists private.secret_ai_daily_cap();
 drop function if exists private.recompute_paid_until(text);
 drop function if exists public.get_paywall_config();
+drop function if exists private.set_couple_paid(text, boolean, text, text, integer);
 drop function if exists private.set_couple_paid(text, boolean, text, text);
 drop function if exists private.new_pay_code();
 drop function if exists private.record_secret_topic(text, text);

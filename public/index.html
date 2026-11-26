@@ -573,8 +573,8 @@
 
       function renderPayArea() {
         const r = state.report; const p = state.paywall;
-        // 연인 비밀방 글이 3개 미만이면 결제 버튼 자리에 한 줄만
-        const btn = (label) => r.posts_ready !== true ? `<p class="py-2.5 text-xs font-bold text-[#636E72] text-center">글이 3개 쌓이면 열 수 있어요</p>`
+        // 리포트에 쓸 연인 비밀방 글(어제까지, 동의한 글만)이 모자라면 결제 버튼 자리에 한 줄만. 숫자는 보여 주지 않는다.
+        const btn = (label) => r.posts_ready !== true ? `<p class="py-2.5 text-xs font-bold text-[#636E72] text-center">리포트에 담을 이야기가 아직 모자라요. 조금 더 쌓이면 열 수 있어요.</p>`
           : `<button type="button" data-action="pay-open" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">${label}</button>`;
         if (!r.pay_code) {
           return `
@@ -596,7 +596,7 @@
                     <span class="font-mono font-extrabold text-base text-[#2D3436] tracking-wider">${esc(r.pay_code)}</span>
                     <button type="button" data-action="copy-pay-code" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
                   </div>
-                  <p class="text-[11px] text-[#636E72] leading-relaxed">주문할 때 배송 메모 칸에 이 코드를 꼭 붙여 넣어 주세요. 이 코드로 두 분을 찾아서 열어 드려요.</p>
+                  <p class="text-[11px] text-[#636E72] leading-relaxed">주문할 때 '결제 확인 코드' 칸에 이 코드를 꼭 붙여 넣어 주세요. 이 코드로 두 분을 찾아서 열어 드려요.</p>
                   ${btn('결제하러 가기')}
                   ${r.posts_ready === true ? '<p class="text-[11px] text-[#9AA5A9] text-center">디지털 상품이라 결제 후에는 환불되지 않아요.</p>' : ''}
                 </div>
@@ -1400,10 +1400,10 @@
                     </div>
                   </div>
 
-                  ${paywallOn() && state.paywall.report_consent === true ? `
+                  ${paywallOn() && state.partnerJoined ? `
                   <div class="flex items-center justify-between rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/15 px-3 py-2.5">
-                    <span class="font-bold text-[#636E72]">리포트에 비밀방 주제 쓰기</span>
-                    <button type="button" data-action="withdraw-secret-report" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">끄기</button>
+                    <span class="font-bold text-[#636E72]">리포트에 비밀방 주제 쓰기 <span class="font-normal text-[#9AA5A9]">· ${state.paywall.report_consent === true ? '켜짐' : '꺼짐'}</span></span>
+                    <button type="button" data-action="${state.paywall.report_consent === true ? 'withdraw-secret-report' : 'grant-secret-report'}" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">${state.paywall.report_consent === true ? '끄기' : '켜기'}</button>
                   </div>` : ''}
 
                   <button type="button" data-action="open-install" class="w-full text-left rounded-2xl bg-white border border-[#2D3436]/8 px-3.5 py-3 flex items-center justify-between">
@@ -1943,6 +1943,15 @@
             try { localStorage.setItem(secretInfoKey(), '1'); } catch (_e) {}
             if (state.paywall) state.paywall.report_consent = true;
           }
+        } else if (action === 'grant-secret-report') {
+          // 설정의 [켜기]: 비밀방 안내 카드의 [확인했어요]와 같은 동의를 다시 기록한다
+          if (!paywallOn()) return;
+          const r = await sbFetchQuiet('rpc/consent_secret_report', { method: 'POST', body: '{}' });
+          if (!r || r.consented !== true) { showToast('잠시 후 다시 시도해 주세요'); return; }
+          if (state.paywall) state.paywall.report_consent = true;
+          secretInfoAcked = true;
+          try { localStorage.setItem(secretInfoKey(), '1'); } catch (_e) {}
+          render();
         } else if (action === 'withdraw-secret-report') {
           // [확인했어요] 끄기: 서버에서 동의·주제 키를 지우면 비밀방 안내 카드가 다시 뜬다
           const r = await sbFetchQuiet('rpc/withdraw_secret_report', { method: 'POST', body: '{}' });

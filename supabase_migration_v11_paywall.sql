@@ -11,7 +11,7 @@
 --       unlock_eta = '<열리는 시간>', enabled = true, updated_at = now();
 --
 -- Unlock = 30-day pass (v1 = manual)
--- * "함께 열기" gives the couple one 결제 확인 코드 (UR-XXXXXX), which they paste in the 아임웹 order memo.
+-- * "함께 열기" gives the couple one 결제 확인 코드 (UR-XXXXXX), which they type into the 아임웹 product option '결제 확인 코드' (required input).
 -- * Every paid order is one row in private.couple_passes (30 days). paid_until = greatest(now(), paid_until) + 30 days,
 --   so buying again stacks. The report is open while now() < paid_until.
 -- * Admin checks the order and runs:  select private.set_couple_paid('UR-XXXXXX');            (adds one manual pass)
@@ -180,21 +180,26 @@ begin
 end $$;
 
 -- admin / webhook / poller, by 결제 확인 코드:
---   p_paid = true  -> add a 30-day pass (same p_source + p_ref twice = no-op; a revoked one comes back)
+--   p_paid = true  -> add a pass of p_days (default 30; an order item of quantity N passes 30*N). Same p_source + p_ref
+--                     twice = no-op apart from taking the new p_days; a revoked one comes back
+-- (v11 before 2026-11-26 13:30 had a 4-argument version; dropped here so only one signature exists)
+drop function if exists private.set_couple_paid(text, boolean, text, text);
 --   p_paid = false -> with p_ref: take back that order's pass; without p_ref: take back every active pass (lock now)
 create or replace function private.set_couple_paid(p_pay_code text, p_paid boolean default true,
-  p_source text default 'manual', p_ref text default null)
+  p_source text default 'manual', p_ref text default null, p_days integer default 30)
 returns jsonb language plpgsql volatile security definer set search_path = private, pg_temp as $$
 declare e private.couple_entitlements; v_src text := coalesce(p_source, 'manual'); v_ref text := nullif(btrim(p_ref), '');
+  v_days integer := coalesce(p_days, 30);
 begin
+  if v_days not between 1 and 366 then raise exception 'bad_days' using errcode = '22023'; end if;
   select * into e from private.couple_entitlements where pay_code = upper(btrim(p_pay_code)) for update;
   if not found then raise exception 'pay_code_not_found' using errcode = 'P0002'; end if;
   if coalesce(p_paid, false) then
     if v_ref is null then
-      insert into private.couple_passes(couple_code, source) values (e.couple_code, v_src);
+      insert into private.couple_passes(couple_code, source, days) values (e.couple_code, v_src, v_days);
     else
-      insert into private.couple_passes(couple_code, source, ref) values (e.couple_code, v_src, v_ref)
-      on conflict (source, ref) where ref is not null do update set revoked_at = null
+      insert into private.couple_passes(couple_code, source, ref, days) values (e.couple_code, v_src, v_ref, v_days)
+      on conflict (source, ref) where ref is not null do update set revoked_at = null, days = excluded.days
         where couple_passes.couple_code = excluded.couple_code;
     end if;
   elsif v_ref is null then
@@ -265,7 +270,7 @@ begin
 end $$;
 
 revoke all on function private.paywall_on(), private.new_pay_code(), private.recompute_paid_until(text),
-  private.set_couple_paid(text, boolean, text, text), private.secret_topic(text),
+  private.set_couple_paid(text, boolean, text, text, integer), private.secret_topic(text),
   private.record_secret_topic(text, text), private.secret_ai_daily_cap(), private.take_secret_ai_call()
   from public, anon, authenticated;
 
@@ -344,7 +349,8 @@ end $$;
 
 -- my_report(): the caller's view of the partner's 마음 날씨.
 -- {"enabled": false} when the flag is off. Keys only (client maps them to fixed copy):
---   posts_ready: the partner has >= 3 consented 비밀방 entries (pay gate; no count is returned)
+--   posts_ready: the partner has >= 3 consented 비밀방 entries written before today KST (pay gate; no count is returned).
+--                Only entries made while the partner's consent is on count (withdraw deletes consent + keys).
 --   paid       : now() < paid_until (30-day pass)
 --   way_key    : partner's 다정함 방식 from missions the partner accepted (penguin/parrot/squirrel/bear/rabbit; same words as 우리 조합)
 --   topics     : TOP 3 서운함 주제 (phone/contact/affection/date/tone), no counts — paid only. Score per key =
@@ -359,6 +365,9 @@ returns jsonb language plpgsql volatile security definer set search_path = publi
 declare c public.couples; e private.couple_entitlements; v_me text; v_partner text; v_paid boolean;
   v_total integer; v_way text; v_topics jsonb; v_ready boolean; v_partner_uid uuid; v_secret_n integer;
   v_secret_hit boolean; snap private.report_snapshots;
+  -- 비밀방 keys count only from posts written before today (KST): the gate and the report move at most once a day,
+  -- at KST midnight, and a post cannot be tied to a report change the same day.
+  v_cut timestamptz := date_trunc('day', now() at time zone 'Asia/Seoul') at time zone 'Asia/Seoul';
 begin
   if auth.uid() is null then return null; end if;
   if (private.paywall_on()).id is null then return jsonb_build_object('enabled', false); end if;
@@ -376,7 +385,7 @@ begin
   -- the partner's 비밀방 entries written at/after the partner's own [확인했어요] for this couple
   select count(*) into v_secret_n from private.secret_topic_tags t
     join private.secret_report_consents s on s.user_id = t.author_user and s.couple_code = t.couple_code
-    where t.couple_code = c.code and t.author_user = v_partner_uid and t.created_at >= s.consented_at;
+    where t.couple_code = c.code and t.author_user = v_partner_uid and t.created_at >= s.consented_at and t.created_at < v_cut;
 
   select count(*) into v_total from public.daily_missions d
     where d.couple_code = c.code and ((d.target_role = v_partner and d.accepted) or d.target_role = v_me);
@@ -401,7 +410,7 @@ begin
       select exists (select 1 from private.secret_topic_tags t
           join private.secret_report_consents s on s.user_id = t.author_user and s.couple_code = t.couple_code
           where coalesce(v_secret_n, 0) >= 3 and t.couple_code = c.code and t.author_user = v_partner_uid
-            and t.created_at >= s.consented_at and t.topic <> 'default'
+            and t.created_at >= s.consented_at and t.created_at < v_cut and t.topic <> 'default'
           group by t.topic having count(*) >= 2)
         into v_secret_hit;
 
@@ -421,7 +430,7 @@ begin
             from private.secret_topic_tags t
             join private.secret_report_consents s on s.user_id = t.author_user and s.couple_code = t.couple_code
             where coalesce(v_secret_n, 0) >= 3
-              and t.couple_code = c.code and t.author_user = v_partner_uid and t.created_at >= s.consented_at
+              and t.couple_code = c.code and t.author_user = v_partner_uid and t.created_at >= s.consented_at and t.created_at < v_cut
               and t.topic <> 'default'
             group by t.topic
             having count(*) >= 2
