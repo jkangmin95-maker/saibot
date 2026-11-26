@@ -21,3 +21,4 @@ $P -d $DB -v ON_ERROR_STOP=1 -f $UP >/dev/null 2>&1 && echo "up again after down
 run_tests
 echo "regression: test_v10_4.sql after v10.5 -> PASS=$($P -d $DB -f scripts/test_v10_4.sql 2>&1 | grep -c 'PASS ') FAIL=$($P -d $DB -f scripts/test_v10_4.sql 2>&1 | grep -cE 'FAIL |ERROR')"
 echo "regression: test_v10.sql after v10.5 -> PASS=$($P -d $DB -f scripts/test_v10.sql 2>&1 | grep -c 'PASS ') FAIL=$($P -d $DB -f scripts/test_v10.sql 2>&1 | grep -cE 'FAIL |ERROR')"
+$P -d postgres -c "drop database if exists $DB" >/dev/null && echo "dropped $DB"
