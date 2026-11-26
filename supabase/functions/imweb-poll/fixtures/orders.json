@@ -1,0 +1,743 @@
+{
+ "paid": {
+  "orderNo": 1001,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1001",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "100101",
+      "orderItemCode": "OI1001",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-ABC234"
+       },
+       "optionInfoList": [
+        [
+         "결제 확인 코드",
+         "UR-ABC234"
+        ]
+       ]
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1001",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "paid_messy_code": {
+  "orderNo": 1002,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1002",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "100201",
+      "orderItemCode": "OI1002",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfoList": [
+        {
+         "optionName": "결제 확인 코드",
+         "optionValue": " ur - abc234 "
+        }
+       ]
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1002",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "paid_fallback_regex": {
+  "orderNo": 1003,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1003",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "100301",
+      "orderItemCode": "OI1003",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "요청사항": "코드는 UR-XYZ789 입니다"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1003",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "refunded": {
+  "orderNo": 1004,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1004",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "100401",
+      "orderItemCode": "OI1004",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-ABC234"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1004",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "REFUND_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "partial_refund": {
+  "orderNo": 1005,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1005",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "100501",
+      "orderItemCode": "OI1005",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-ABC234"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1005",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PARTIAL_REFUND_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "cancel_section": {
+  "orderNo": 1006,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1006",
+    "orderSectionStatus": "CANCEL_COMPLETE",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "100601",
+      "orderItemCode": "OI1006",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-ABC234"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1006",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "return_request": {
+  "orderNo": 1007,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1007",
+    "orderSectionStatus": "RETURN_REQUEST",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "100701",
+      "orderItemCode": "OI1007",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-ABC234"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1007",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "cancelled_before_deposit": {
+  "orderNo": 1008,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1008",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "100801",
+      "orderItemCode": "OI1008",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-ABC234"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1008",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "CANCELLED_BEFORE_DEPOSIT",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "missing_code": {
+  "orderNo": 1009,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1009",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "100901",
+      "orderItemCode": "OI1009",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "모르겠어요"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1009",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "no_options": {
+  "orderNo": 1010,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1010",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "101001",
+      "orderItemCode": "OI1010",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1010",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "ambiguous": {
+  "orderNo": 1011,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1011",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "101101",
+      "orderItemCode": "OI1011",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "메모": "UR-AAAAAA 또는 UR-BBBBBB"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1011",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "wrong_product": {
+  "orderNo": 1012,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1012",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "101201",
+      "orderItemCode": "OI1012",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 7,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-ABC234"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1012",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "pending_bank": {
+  "orderNo": 1013,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1013",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "101301",
+      "orderItemCode": "OI1013",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-ABC234"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1013",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_PREPARATION",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "free_payment": {
+  "orderNo": 1014,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1014",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "101401",
+      "orderItemCode": "OI1014",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-ABC234"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1014",
+    "pgName": "TOSSPAYMENTS",
+    "method": "FREE",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "refund_processing": {
+  "orderNo": 1015,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1015",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "101501",
+      "orderItemCode": "OI1015",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-ABC234"
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1015",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "REFUND_PROCESSING",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "duplicate": {
+  "orderNo": 1001,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1001",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "100101",
+      "orderItemCode": "OI1001",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-ABC234"
+       },
+       "optionInfoList": [
+        [
+         "결제 확인 코드",
+         "UR-ABC234"
+        ]
+       ]
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1001",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ },
+ "multi": {
+  "orderNo": 1016,
+  "saleChannel": "IMWEB",
+  "orderType": "DIGITAL",
+  "orderStatus": "OPEN",
+  "ordererName": "홍길동",
+  "ordererEmail": "buyer@example.com",
+  "ordererCall": "010-0000-0000",
+  "wtime": "2026-11-26T03:00:00.000Z",
+  "totalRefundedPrice": 0,
+  "sections": [
+   {
+    "orderSectionCode": "S1016",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "101601",
+      "orderItemCode": "OI1016",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 11,
+       "prodName": "우리사이 속마음 리포트",
+       "itemPrice": 4900,
+       "optionInfo": {
+        "결제 확인 코드": "UR-QQQ222"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "orderSectionCode": "S1016b",
+    "orderSectionStatus": "PRODUCT_PREPARATION",
+    "sectionItems": [
+     {
+      "orderSectionItemNo": "101602",
+      "orderItemCode": "OI1016b",
+      "qty": 1,
+      "productInfo": {
+       "prodNo": 3,
+       "prodName": "다른 상품"
+      }
+     }
+    ]
+   }
+  ],
+  "payments": [
+   {
+    "paymentNo": "P1016",
+    "pgName": "TOSSPAYMENTS",
+    "method": "CARD",
+    "paymentStatus": "PAYMENT_COMPLETE",
+    "isCancel": "N",
+    "paidPrice": 4900
+   }
+  ]
+ }
+}

@@ -3,6 +3,7 @@
 #   schema -> v8 -> v9 -> v9.1
 #   v10: up -> up again -> test_v10 -> down -> up -> test_v10
 #   v11: up -> up again -> test_v10 + test_v11 -> down -> test_v10 -> up -> test_v10 + test_v11
+#   v11.1: up -> up again -> test_v11 + test_v11_1 -> down -> test_v11 -> up -> test_v11_1
 #   sai_chat probe (scripts/probe_sai_chat.sql): the Gemini request sai_chat builds with the v11 flag OFF must be
 #   byte-for-byte the v9.1 one, and v11 down must restore the exact v9.1 sai_chat / v9 generate_mission source.
 # Needs a local Postgres you can reach as superuser, e.g. PGHOST=/tmp PGPORT=5432 PGUSER=postgres.
@@ -46,4 +47,16 @@ echo "  left after v11 down: tables=$($P -d $DB -tAc "select count(*) from pg_ta
 run_tests scripts/test_v10.sql
 apply $V11.sql "v11 up after down"; run_tests scripts/test_v10.sql; run_tests scripts/test_v11.sql
 probe v11again; same "v11 up after down, flag OFF: sai_chat request identical to v9.1" v11again "^(RESULT|BODY|ATTEMPTS)"
+V111=supabase_migration_v11_1_imweb
+echo "== v11.1"
+apply $V111.sql "v11.1 up"; apply $V111.sql "v11.1 up again"; run_tests scripts/test_v11.sql; run_tests scripts/test_v11_1.sql
+$P -d $DB -c "insert into public.couples(code) values ('DOWNT')" -c "insert into private.couple_entitlements(couple_code, pay_code) values ('DOWNT', 'UR-DDDDDD')" -c "insert into private.couple_passes(couple_code, source, ref) values ('DOWNT', 'imweb', '42/OI42')" -c "select private.recompute_paid_until('DOWNT')" >/dev/null
+apply ${V111}_down.sql "v11.1 down"
+got=$($P -d $DB -tAc "select (e.paid_until = p.paid_at + interval '30 days')::text || '|' || e.paid_source || '|' || e.payment_ref || '|' || p.source from private.couple_entitlements e join private.couple_passes p using (couple_code) where couple_code='DOWNT'")
+if [ "$got" = "true|manual|42/OI42|manual" ]; then echo "  PASS imweb pass after down: still 30 days, relabeled manual, ref kept ($got)"; else echo "  FAIL imweb pass after down: $got"; TOTAL_FAIL=$((TOTAL_FAIL + 1)); fi
+$P -d $DB -c "delete from public.couples where code='DOWNT'" >/dev/null
+echo "  left after v11.1 down: tables=$($P -d $DB -tAc "select count(*) from pg_tables where schemaname='private' and tablename like 'imweb%'") functions=$($P -d $DB -tAc "select count(*) from pg_proc where proname like 'imweb_%'") imweb_in_check=$($P -d $DB -tAc "select count(*) from pg_constraint where conname in ('couple_entitlements_paid_source_check','couple_passes_source_check') and pg_get_constraintdef(oid) like '%imweb%'")"
+run_tests scripts/test_v11.sql
+apply ${V111}_down.sql "v11.1 down again"
+apply $V111.sql "v11.1 up after down"; run_tests scripts/test_v11.sql; run_tests scripts/test_v11_1.sql
 echo "TOTAL FAIL/ERROR = $TOTAL_FAIL"
