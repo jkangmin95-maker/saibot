@@ -1015,7 +1015,7 @@
                 </div>
                 <h3 class="text-[15px] font-extrabold text-[#2D3436] mb-1.5">${esc(state.partnerName)}님에게 고마운 거 하나</h3>
                 <p class="text-[13px] text-[#4A5568] leading-relaxed">“${esc(quote.q)}” (${quote.p}쪽)</p>
-                <a href="${BOOK_LINKS.card}" target="_blank" rel="noopener" data-book-link="card" class="block w-fit mt-1 text-[11px] leading-4 font-bold text-[#E0665B]">이 구절이 나온 책 보기</a>
+                <a href="${BOOK_LINKS.card}" target="_blank" rel="noopener" data-book-link="card" class="block w-fit mt-1 text-[12px] leading-4 font-normal text-[#E0665B]">이 구절이 나온 책 보기</a>
                 ${!sent ? `
                   <div class="flex gap-1.5 overflow-x-auto mt-3 pb-2 no-scrollbar">
                     <button type="button" data-action="gratitude-example" data-idx="-1" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-[#FF8A80]/30 transition-colors ${idx === -1 ? 'bg-[#FF8A80] text-white' : 'bg-[#FFF9F5] text-[#2D3436]'}">직접 쓰기</button>
@@ -1287,7 +1287,7 @@
             <div class="bg-white rounded-3xl px-5 py-4 border border-[#FF8A80]/20 shadow-sm flex items-center" data-warmth-card>
               <div class="relative shrink-0 w-[36px] h-[118px]" aria-hidden="true" data-warmth-thermo>
                 <div class="absolute left-1/2 -translate-x-1/2 top-0 bottom-[32px] w-3 bg-[#FFF0EE] rounded-t-full overflow-hidden">
-                  <div class="absolute bottom-0 left-0 w-full bg-gradient-to-t from-[#FFAB91] to-[#FF8A80] rounded-t-full" data-warmth-bar data-warmth-axis="y" style="height:${warmthPct(state.warmthTemp)}%"></div>
+                  <div class="absolute bottom-0 left-0 w-full bg-gradient-to-t from-[#FF8A80] from-[8px] to-[#FFAB91] rounded-t-full" data-warmth-bar data-warmth-axis="y" style="height:${warmthPct(state.warmthTemp)}%"></div>
                 </div>
                 <div class="absolute bottom-0 left-0 w-[36px] h-[36px] rounded-full bg-[#FF8A80]"></div>
                 <span class="absolute left-[27px] translate-y-1/2 text-[10px] leading-none text-[#B2BEC3]" style="bottom:${32 + 0.86 * warmthPct(36.5)}px">36.5</span>
@@ -1459,13 +1459,12 @@
                   </button>
 
                   ${state.kakaoName ? `<p class="text-[11px] text-[#9AA5A9] text-center">카카오 계정 <span class="font-bold text-[#636E72]">${esc(state.kakaoName)}</span>(으)로 로그인됨</p>` : ''}
-                  <p class="text-[11px] text-[#B2BEC3] text-center pt-1">우리사이 <span class="font-mono tracking-wide">${APP_VERSION}</span></p>
+                  <p class="text-[11px] text-[#B2BEC3] text-center pt-1">우리사이 <span class="font-mono tracking-wide">${APP_VERSION}</span> · <a href="${BOOK_LINKS.settings}" target="_blank" rel="noopener" data-book-link="settings" class="underline">긍정학개론 책 보기</a></p>
                 </div>
 
                 <button type="button" data-action="logout-ask" class="mt-5 w-full py-3 rounded-2xl border border-[#FF8A80]/30 text-[#E0665B] text-xs font-extrabold bg-white hover:bg-[#FFF0EE]">
                   로그아웃
                 </button>
-                <a href="${BOOK_LINKS.settings}" target="_blank" rel="noopener" data-book-link="settings" class="block mt-3 text-center text-[11px] leading-4 font-bold text-[#E0665B]">긍정학개론 책 보기</a>
               </div>
             </div>
           `;
