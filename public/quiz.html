@@ -132,26 +132,44 @@
         return location.origin + location.pathname;
       }
 
-      async function shareText(text, url) {
+      function copyText(t) {
+        if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t);
+        return new Promise((resolve, reject) => {
+          const ta = document.createElement('textarea');
+          ta.value = t;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          let ok = false;
+          try { ok = document.execCommand('copy'); } catch (_e) {}
+          document.body.removeChild(ta);
+          if (ok) resolve(); else reject(new Error('copy-failed'));
+        });
+      }
+
+      // 공유창을 탭 직후 바로 띄움(await 없이 호출해야 탭 제스처가 유지됨).
+      // 공유창이 없거나 실패하면 링크 복사, 사용자가 닫은 경우(AbortError)는 아무것도 안 함.
+      // 결과: 'shared' | 'copied' | 'aborted' | 'failed'
+      function shareOrCopy(data, fallbackText) {
+        let p;
         try {
-          if (navigator.share) {
-            await navigator.share({ title: '우리사이', text: text, url: url });
-            return true;
-          }
-          await navigator.clipboard.writeText(text + '\n' + url);
-          showToast('링크 복사 완료!');
-          return true;
+          p = navigator.share ? navigator.share(data) : Promise.reject(new Error('share-unavailable'));
         } catch (err) {
-          if (err && err.name === 'AbortError') return false;
-          try {
-            await navigator.clipboard.writeText(text + '\n' + url);
-            showToast('링크 복사 완료!');
-            return true;
-          } catch (_e) {
-            showToast('잠시 후 다시 시도해 주세요');
-            return false;
-          }
+          p = Promise.reject(err);
         }
+        return Promise.resolve(p).then(() => 'shared', (err) => {
+          if (err && err.name === 'AbortError') return 'aborted';
+          return copyText(fallbackText).then(() => { showToast('링크 복사 완료!'); return 'copied'; },
+            () => { showToast('잠시 후 다시 시도해 주세요'); return 'failed'; });
+        });
+      }
+
+      // true = 공유창으로 보냈거나 복사됨
+      function shareText(text, url) {
+        return shareOrCopy({ title: '우리사이', text: text, url: url }, text + '\n' + url)
+          .then((r) => r === 'shared' || r === 'copied');
       }
 
       function cleanNick(v) {
@@ -256,7 +274,23 @@
         shell([card]);
       }
 
+      // 보내기 화면이 뜨면 퀴즈를 미리 만들어 두어, 버튼을 누르면 바로 공유창이 뜨게 함
+      function prepareQuiz() {
+        if (S.shareToken) return Promise.resolve(S.shareToken);
+        if (!S.createP) {
+          S.createP = rpc('create_quiz', { p_a_name: S.aName, p_b_name: S.bName, p_answers: S.answers, p_challenge_token: S.challengeToken || null })
+            .then((r) => {
+              S.shareToken = r.token;
+              S.aName = r.a_name; S.bName = r.b_name;
+              rememberMade(r.token);
+              return r.token;
+            }, (err) => { S.createP = null; throw err; });
+        }
+        return S.createP;
+      }
+
       function renderSend() {
+        if (!S.shareToken) prepareQuiz().catch(() => {});
         const card = h('div', CARD + ' animate-pop space-y-5');
         card.appendChild(progress(TOTAL));
         card.appendChild(btn('연인에게 맞히기 보내기', PRIMARY, sendToPartner));
@@ -272,27 +306,19 @@
         shell([h('div', 'h-6'), card]);
       }
 
-      async function sendToPartner() {
+      function sendToPartner() {
         if (S.busy) return;
         S.busy = true;
-        try {
-          if (!S.shareToken) {
-            const r = await rpc('create_quiz', { p_a_name: S.aName, p_b_name: S.bName, p_answers: S.answers, p_challenge_token: S.challengeToken || null });
-            S.shareToken = r.token;
-            S.aName = r.a_name; S.bName = r.b_name;
-            rememberMade(r.token);
-          }
-          await shareText(S.aName + subjectParticle(S.aName) + ' 문제 냈어. 나에 대해 몇 개나 맞힐 수 있어? 👀', baseUrl() + '#q=' + S.shareToken);
-          go('send');
-        } catch (err) {
+        const share = () => shareText(S.aName + subjectParticle(S.aName) + ' 문제 냈어. 나에 대해 몇 개나 맞힐 수 있어? 👀', baseUrl() + '#q=' + S.shareToken);
+        // 토큰이 이미 있으면 await 없이 바로 공유창
+        const p = S.shareToken ? share() : prepareQuiz().then(share);
+        p.then(() => go('send'), (err) => {
           if (isGone(err)) go('expired');
           else {
             if (S.shareToken) go('send');
             showToast('잠시 후 다시 시도해 주세요');
           }
-        } finally {
-          S.busy = false;
-        }
+        }).finally(() => { S.busy = false; });
       }
 
       function renderLanding() {
@@ -352,11 +378,12 @@
 
         const actions = h('div', 'space-y-2.5 pt-1');
         if (S.isMaker) {
-          actions.appendChild(btn('친구 커플에게 도전장 보내기', PRIMARY, sendChallenge));
+          actions.appendChild(challengeBtn(PRIMARY));
         } else {
           actions.appendChild(btn(r.a_name + '님에게 점수 보내기', PRIMARY, sendScore));
           actions.appendChild(btn('스토리에 올리기', OUTLINE, shareStory));
-          actions.appendChild(btn('친구 커플에게 도전장 보내기', OUTLINE, sendChallenge));
+          actions.appendChild(challengeBtn(OUTLINE));
+          prepareStory();
         }
         actions.appendChild(btn('우리사이에서 매일 이어하기', GHOST, () => {
           logEvent('quiz_kakao_start');
@@ -366,28 +393,44 @@
         shell(blocks);
       }
 
-      async function sendScore() {
+      function sendScore() {
         const r = S.result;
-        await shareText(r.b_name + subjectParticle(r.b_name) + ' ' + TOTAL + '문제 중 ' + r.score + '개 맞혔어 👀', baseUrl() + '#q=' + S.quizToken);
+        shareText(r.b_name + subjectParticle(r.b_name) + ' ' + TOTAL + '문제 중 ' + r.score + '개 맞혔어 👀', baseUrl() + '#q=' + S.quizToken);
       }
 
-      async function sendChallenge() {
+      // 도전장 링크는 서버에서 만들어야 해서, 버튼을 누르기 시작할 때(pointerdown) 미리 요청해 둠
+      function challengeBtn(cls) {
+        const b = btn('친구 커플에게 도전장 보내기', cls, sendChallenge);
+        b.addEventListener('pointerdown', () => { prepareChallenge().catch(() => {}); });
+        return b;
+      }
+
+      function prepareChallenge() {
+        if (S.challengeLink) return Promise.resolve(S.challengeLink);
+        if (!S.challengeP) {
+          S.challengeP = rpc('create_challenge', { p_quiz_token: S.quizToken })
+            .then((r) => { S.challengeLink = { token: r.token, score: r.score }; return S.challengeLink; },
+              (err) => { S.challengeP = null; throw err; });
+        }
+        return S.challengeP;
+      }
+
+      function sendChallenge() {
         if (S.busy) return;
         S.busy = true;
-        try {
-          const r = await rpc('create_challenge', { p_quiz_token: S.quizToken });
-          const ok = await shareText('우리는 ' + r.score + '점 나왔어. 너네는 몇 점이야?', baseUrl() + '#c=' + r.token);
+        const share = (c) => shareText('우리는 ' + c.score + '점 나왔어. 너네는 몇 점이야?', baseUrl() + '#c=' + c.token).then((ok) => {
           if (ok) logEvent('challenge_sent');
-          if (!S.myChallenge || S.myChallenge.token !== r.token) {
-            S.myChallenge = { token: r.token, status: 'waiting' };
+          if (!S.myChallenge || S.myChallenge.token !== c.token) {
+            S.myChallenge = { token: c.token, status: 'waiting' };
             pollChallenge(0);
           }
           go('score');
-        } catch (err) {
+        });
+        // 링크가 이미 있으면 await 없이 바로 공유창
+        const p = S.challengeLink ? share(S.challengeLink) : prepareChallenge().then(share);
+        p.catch((err) => {
           if (isGone(err)) go('expired'); else showToast('잠시 후 다시 시도해 주세요');
-        } finally {
-          S.busy = false;
-        }
+        }).finally(() => { S.busy = false; });
       }
 
       let pollTimer = null;
@@ -415,7 +458,7 @@
         card.appendChild(h('h1', 'text-lg font-extrabold text-[#2D3436] pt-1', '이 링크는 끝났어요. 새로 시작해 볼까요?'));
         card.appendChild(btn('새 테스트 시작하기', PRIMARY, () => {
           history.replaceState(null, '', location.pathname);
-          Object.assign(S, { quizToken: '', challengeToken: '', shareToken: '', result: null, myChallenge: null, answers: [], idx: 0 });
+          Object.assign(S, { quizToken: '', challengeToken: '', shareToken: '', createP: null, challengeLink: null, challengeP: null, result: null, myChallenge: null, answers: [], idx: 0 });
           go('start');
         }));
         shell([h('div', 'h-6'), card]);
@@ -467,23 +510,31 @@
         return new Promise((resolve) => cv.toBlob(resolve, 'image/png'));
       }
 
-      async function shareStory() {
-        try {
-          const blob = await drawScoreCard(S.result);
-          const file = new File([blob], 'urisai-quiz.png', { type: 'image/png' });
-          if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file] });
-          } else {
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'urisai-quiz.png';
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-          }
-        } catch (err) {
-          if (err && err.name === 'AbortError') return;
-          showToast('잠시 후 다시 시도해 주세요');
-        }
+      // 점수 화면이 뜨면 스토리 이미지를 미리 그려 두어, 버튼을 누르면 바로 공유창이 뜨게 함
+      const story = { key: '', file: null, p: null };
+      function storyKey(r) { return [r.a_name, r.b_name, r.score].join('|'); }
+      function prepareStory() {
+        const r = S.result;
+        const key = storyKey(r);
+        if (story.key === key && story.p) return story.p;
+        story.key = key; story.file = null;
+        story.p = drawScoreCard(r).then((blob) => {
+          if (story.key === key && blob) story.file = new File([blob], 'urisai-quiz.png', { type: 'image/png' });
+          return story.file;
+        }, () => { if (story.key === key) story.p = null; return null; });
+        return story.p;
+      }
+
+      function shareStory() {
+        const r = S.result;
+        const text = r.b_name + '님은 ' + r.a_name + '님을 ' + r.score + '/' + TOTAL + ' 알아요';
+        const url = baseUrl();
+        const file = story.key === storyKey(r) ? story.file : null;
+        if (!file) prepareStory();
+        const data = file && navigator.canShare && navigator.canShare({ files: [file] })
+          ? { files: [file], title: '우리사이' }
+          : { title: '우리사이', text: text, url: url };
+        shareOrCopy(data, text + '\n' + url);
       }
       window.__drawScoreCard = drawScoreCard; // self-test hook (harmless)
 
