@@ -57,7 +57,7 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v10.6";
+      const APP_VERSION = "v11";
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
@@ -199,7 +199,11 @@
           showLogoutConfirm: false,
           showInstallGuide: false,
           showCombo: false,
-          shareConsent: null // v10: 우리 조합 카드 공유 동의 (my_share_consent)
+          shareConsent: null, // v10: 우리 조합 카드 공유 동의 (my_share_consent)
+          paywall: null, // v11: get_paywall_config (켜져 있을 때만 값이 있음)
+          report: null, // v11: my_report
+          showReport: false,
+          secretInfoOpen: false
         };
       }
 
@@ -420,6 +424,7 @@
           const consent = await sbFetchQuiet('rpc/my_share_consent', { method: 'POST', body: JSON.stringify({ p_card_type: 'combo' }) });
           if (consent !== null && applyShareConsent(consent && consent.id ? consent : null)) changed = true;
         }
+        if (await refreshPaywall(false)) changed = true;
         if (changed) {
           saveState();
           if (!isUserTyping()) render();
@@ -444,6 +449,203 @@
         return true;
       }
 
+      // ---- v11: 심층 리포트(마음 날씨) + 결제 화면 ----
+      // 서버 플래그(get_paywall_config)가 켜지고 가격·아임웹 링크·열리는 시간이 모두 채워졌을 때만 보인다.
+      // 꺼져 있으면 아래 함수는 모두 빈 문자열/원래 문구를 돌려줘서 기존 화면이 그대로다.
+      // 리포트 내용은 서버(my_report)가 만든 키(다정함 방식, 서운함 주제)뿐이다. 서운함 주제에는 미션 기록과 함께,
+      // 연인이 비밀방 안내에서 [확인했어요](consent_secret_report)를 누른 뒤에 쓴 글의 '주제 키'만 쓰인다. 비밀방 원문은 어디에도 없다.
+      const SECRET_COPY = [
+        ['여기 대화는 연인에게 절대 보이지 않아요', '쓴 문장은 연인에게 절대 보이지 않아요'],
+        ['여기 얘기는 연인에게 보이지 않으니까 마음 편히 말해 주세요.', '쓴 문장은 연인에게 절대 보이지 않아요. 마음 편히 말해 주세요.']
+      ];
+      let paywallCheckedAt = 0;
+      let teaserViewLogged = false;
+
+      function paywallOn() {
+        const p = state.paywall;
+        return Boolean(p && p.enabled === true && Number(p.price_krw) > 0
+          && typeof p.checkout_url === 'string' && /^https:\/\/[^\s<>"'`\\]+$/.test(p.checkout_url)
+          && typeof p.unlock_eta === 'string' && p.unlock_eta.trim());
+      }
+
+      function reportVisible() {
+        const r = state.report;
+        return paywallOn() && state.partnerJoined && Boolean(r && r.enabled === true && r.partner_joined === true);
+      }
+
+      function secretCopy(text) {
+        if (!paywallOn()) return text;
+        let t = String(text || '');
+        SECRET_COPY.forEach(([a, b]) => { t = t.split(a).join(b); });
+        return t;
+      }
+
+      // 서버에 [확인했어요]가 기록됐을 때만 저장 (실패하면 다음에 카드가 다시 뜬다)
+      function secretInfoKey() { return 'urisai_secret_consent_' + state.userId + '_' + state.coupleCode; }
+      let secretInfoAcked = false;
+      let capNotice = false; // 비밀방 하루 상한(서버 sai_chat {capped:true})
+      function checkoutKey() { return 'urisai_checkout_opened_' + state.coupleCode; }
+
+      async function refreshPaywall(force) {
+        if (state.phase !== 'ready' || !state.coupleCode) return false;
+        if (!force && Date.now() - paywallCheckedAt < 30000) return false;
+        paywallCheckedAt = Date.now();
+        const before = JSON.stringify([state.paywall, state.report]);
+        const wasPaid = Boolean(state.report && state.report.paid);
+        const cfg = await sbFetchQuiet('rpc/get_paywall_config', { method: 'POST', body: '{}' });
+        state.paywall = cfg && cfg.enabled === true ? cfg : null;
+        if (paywallOn() && state.partnerJoined) {
+          const r = await sbFetchQuiet('rpc/my_report', { method: 'POST', body: '{}' });
+          state.report = r && r.enabled === true ? r : null;
+        } else {
+          state.report = null;
+          state.showReport = false;
+        }
+        if (reportVisible() && state.report.paid && !wasPaid) {
+          const k = 'urisai_report_opened_' + state.coupleCode;
+          try {
+            if (!localStorage.getItem(k)) { localStorage.setItem(k, '1'); showToast('두 분의 마음 날씨 리포트가 열렸어요 💛'); }
+          } catch (_e) {}
+        }
+        return before !== JSON.stringify([state.paywall, state.report]);
+      }
+
+      // 우리 온도 탭 — 우리 조합 카드 바로 아래
+      function renderReportTabCard() {
+        if (!reportVisible()) return '';
+        const r = state.report;
+        const name = r.partner_name || state.partnerName || '연인';
+        if (!teaserViewLogged) { teaserViewLogged = true; logEvent('report_teaser_view'); }
+        if (!r.ready) {
+          return `
+            <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
+              <div>
+                <p class="text-xs font-bold text-[#2D3436]">마음이 조금 더 쌓이면 열 수 있어요</p>
+                <p class="text-[11px] text-[#9AA5A9] mt-1">그동안 오늘의 미션으로 온도를 올려 봐요.</p>
+              </div>
+              <button type="button" data-action="switch-tab" data-tab="missions" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">오늘의 미션 하러 가기</button>
+            </div>`;
+        }
+        return `
+            <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
+              <div>
+                <p class="text-xs font-bold text-[#2D3436]">${esc('요즘 ' + name + '님 마음 날씨')}</p>
+                ${r.paid ? '' : `<p class="text-[11px] text-[#9AA5A9] mt-1">${esc(name + '님이 좋아하는 다정함 방식 하나를 먼저 보여드려요.')}</p>`}
+              </div>
+              <button type="button" data-action="open-report" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">${esc('요즘 ' + name + '님 마음 날씨 열어보기')}</button>
+            </div>`;
+      }
+
+      function renderReportModal() {
+        const r = state.report;
+        const name = r.partner_name || state.partnerName || '연인';
+        const way = COMBO_TYPES.find((t) => t.key === r.way_key);
+        const section = (label, inner) => `
+                <div class="rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-3.5">
+                  <p class="text-[11px] font-bold text-[#FF8A80]">${esc(label)}</p>
+                  ${inner}
+                </div>`;
+        let body = '';
+        if (way) body += section(name + '님이 좋아하는 다정함 방식', `<p class="text-sm font-extrabold text-[#2D3436] mt-1">${esc(way.desc)}</p>`);
+        if (r.paid && r.report) {
+          const topics = (Array.isArray(r.report.topics) ? r.report.topics : []).map((k) => NUDGE_LIBRARY[k] && NUDGE_LIBRARY[k].tagName).filter(Boolean);
+          if (topics.length) {
+            body += section('요즘 서운함 주제 TOP 3', `<ol class="mt-1.5 space-y-1">${topics.map((t, i) => `<li class="text-sm font-extrabold text-[#2D3436]">${i + 1}. ${esc(t)}</li>`).join('')}</ol>`);
+          }
+          const lib = NUDGE_LIBRARY[r.report.mission_key] || NUDGE_LIBRARY.default;
+          body += section('이번 주에 해 볼 미션', lib.drafts.slice(0, 2).map((d) => `
+                  <div class="mt-2 text-xs">
+                    <p class="font-bold text-[#2D3436]">${esc(d.title)}</p>
+                    <p class="text-[#4A5568] mt-0.5 leading-relaxed">${esc(d.message)}</p>
+                  </div>`).join(''));
+        } else {
+          // 잠긴 부분: 실제 내용 없이 회색 막대만 흐리게
+          const bar = (w) => `<div class="h-3 rounded-full bg-[#2D3436]/15" style="width:${w}%"></div>`;
+          body += `
+                <div class="relative rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-3.5 overflow-hidden" aria-hidden="true">
+                  <div class="space-y-2.5 blur-[3px] select-none">${[38, 82, 64, 30, 90, 72, 55].map(bar).join('')}</div>
+                  <div class="absolute inset-0 flex items-center justify-center"><span class="text-2xl">🔒</span></div>
+                </div>`;
+          body += renderPayArea();
+        }
+        return `
+            <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
+              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 shadow-2xl max-h-[92vh] overflow-y-auto space-y-3.5">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-base font-extrabold text-[#2D3436]">${esc('요즘 ' + name + '님 마음 날씨')}</h3>
+                  <button type="button" data-action="close-modals" class="text-sm font-bold text-[#636E72] px-2 py-1">닫기</button>
+                </div>
+                ${body}
+              </div>
+            </div>`;
+      }
+
+      function renderPayArea() {
+        const r = state.report; const p = state.paywall;
+        // 리포트에 쓸 연인 비밀방 글(어제까지, 동의한 글만)이 모자라면 결제 버튼 자리에 한 줄만. 숫자는 보여 주지 않는다.
+        const btn = (label) => r.posts_ready !== true ? `<p class="py-2.5 text-xs font-bold text-[#636E72] text-center">리포트에 담을 이야기가 아직 모자라요. 조금 더 쌓이면 열 수 있어요.</p>`
+          : `<button type="button" data-action="pay-open" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">${label}</button>`;
+        if (!r.pay_code) {
+          return `
+                <div class="rounded-2xl border border-[#FF8A80] ring-2 ring-[#FF8A80]/15 p-4 space-y-3 text-center">
+                  <div>
+                    <p class="text-sm font-extrabold text-[#2D3436]">우리사이 플러스 30일권</p>
+                    <p class="text-[11px] text-[#636E72] mt-1.5">✓ 속마음 리포트</p>
+                    <p class="text-[11px] text-[#636E72] mt-0.5">✓ 한 분이 결제하면 두 분 모두</p>
+                    <p class="text-xl font-extrabold text-[#2D3436] mt-2">${esc(Number(p.price_krw).toLocaleString('ko-KR') + '원')}</p>
+                  </div>
+                  ${btn('함께 열기')}
+                  <div class="border-t border-[#2D3436]/8 pt-3">
+                    <p class="text-[12px] text-[#9AA5A9]">함께 읽으면 좋은 책 · <a href="${BOOK_LINKS.paywall}" target="_blank" rel="noopener" data-book-link="paywall" class="underline">『긍정학개론』 보러 가기</a></p>
+                  </div>
+                </div>`;
+        }
+        let opened = false;
+        try { opened = Boolean(localStorage.getItem(checkoutKey())); } catch (_e) {}
+        return `
+                <div class="rounded-2xl border border-[#FF8A80] ring-2 ring-[#FF8A80]/15 p-4 space-y-3">
+                  <p class="text-[11px] font-bold text-[#636E72]">결제 확인 코드</p>
+                  <div class="flex items-center justify-between gap-2 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/30 px-3 py-2.5">
+                    <span class="font-mono font-extrabold text-base text-[#2D3436] tracking-wider">${esc(r.pay_code)}</span>
+                    <button type="button" data-action="copy-pay-code" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">복사</button>
+                  </div>
+                  <p class="text-[11px] text-[#636E72] leading-relaxed">주문할 때 '결제 확인 코드' 칸에 이 코드를 꼭 붙여 넣어 주세요. 이 코드로 두 분을 찾아서 열어 드려요.</p>
+                  ${btn('결제하러 가기')}
+                  ${r.posts_ready === true ? '<p class="text-[11px] text-[#9AA5A9] text-center">디지털 상품이라 결제 후에는 환불되지 않아요.</p>' : ''}
+                </div>
+                ${opened ? `
+                <div class="rounded-2xl bg-[#FFF9F5] border border-[#FF8A80]/20 p-4 text-center">
+                  <p class="text-sm font-extrabold text-[#2D3436]">결제 확인 중이에요</p>
+                  <p class="text-[11px] text-[#636E72] mt-1 leading-relaxed">${esc('확인되면 두 분 모두에게 바로 열려요. ' + p.unlock_eta)}</p>
+                </div>` : ''}`;
+      }
+
+      // 비밀방 — 첫 안내 카드 (한 번 확인하면 다시 안 뜸)
+      function renderSecretInfoCard() {
+        if (!paywallOn() || secretInfoAcked) return '';
+        try { if (localStorage.getItem(secretInfoKey())) return ''; } catch (_e) { return ''; }
+        return `
+                <div class="animate-pop bg-white rounded-2xl p-4 border border-[#FF8A80] ring-2 ring-[#FF8A80]/15 shadow-sm space-y-3">
+                  <div>
+                    <p class="text-sm font-extrabold text-[#2D3436]">쓴 말은 그대로 보이지 않아요</p>
+                    <p class="text-xs text-[#636E72] mt-1.5 leading-relaxed">여기 쓴 문장은 연인에게 절대 보이지 않아요. 요즘 마음이 어느 쪽에 있는지만 주제로 정리돼서, 두 분이 함께 여는 리포트에 들어갈 수 있어요.</p>
+                  </div>
+                  <button type="button" data-action="secret-info-ok" class="w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">확인했어요</button>
+                </div>`;
+      }
+
+      // 비밀방 — 입력창 위 한 줄 (+ 눌러서 펼치기)
+      function renderSecretInfoLine() {
+        if (!paywallOn()) return '';
+        return `
+              <button type="button" data-action="secret-info-toggle" class="w-full text-left text-[11px] text-[#9AA5A9] pb-2">🔒 쓴 문장은 절대 보이지 않아요 · <span class="font-bold text-[#E0665B] underline underline-offset-2">리포트에는 뭐가 들어가나요?</span></button>
+              ${state.secretInfoOpen ? `
+              <div class="mb-2 rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/20 px-3 py-2 text-[11px] text-[#636E72] leading-relaxed">
+                <p>들어가는 것: 요즘 서운함 주제 TOP 3, 좋아하는 다정함 방식</p>
+                <p>절대 안 들어가는 것: 쓴 문장 그대로, 인용, 날짜별 기록</p>
+              </div>` : ''}`;
+      }
+
       // v10: 퍼널 카운터 (실패해도 무시)
       function logEvent(name) {
         sbFetchQuiet('rpc/log_event', { method: 'POST', body: JSON.stringify({ p_event: name }) });
@@ -452,13 +654,14 @@
       // v10.5: 책 링크. 링크별 하루 클릭 수만 센다 (기다리지 않음, 실패해도 무시)
       const BOOK_LINKS = {
         card: 'https://positiveuniv.imweb.me/shop_view/?idx=9',
-        settings: 'https://positiveuniv.imweb.me/shop_view/?idx=7'
+        settings: 'https://positiveuniv.imweb.me/shop_view/?idx=7',
+        paywall: 'https://positiveuniv.imweb.me/shop_view/?idx=7'
       };
       document.addEventListener('click', (e) => {
         const a = e.target.closest('a[data-book-link]');
         if (!a) return;
         const key = a.getAttribute('data-book-link');
-        if (key !== 'card' && key !== 'settings') return;
+        if (key !== 'card' && key !== 'settings' && key !== 'paywall') return;
         sbFetchQuiet('rpc/log_book_click', { method: 'POST', keepalive: true, body: JSON.stringify({ p_key: key }) });
       });
 
@@ -818,6 +1021,7 @@
 
         const r = await rpcTimed('sai_chat', { couple_code: state.coupleCode, messages: chatHistory(role) }, 27000);
         const d = r.data;
+        if (r.status === 200 && d && d.capped === true) return { capped: true };
         if (r.status === 200 && d && typeof d.reply === 'string' && d.reply.trim()) {
           const drafts = (Array.isArray(d.missions) ? d.missions : [])
             .filter((m) => m && m.message)
@@ -1014,7 +1218,8 @@
                   <span class="text-[11px] font-bold text-[#FF8A80] bg-[#FFF0EE] px-2.5 py-0.5 rounded-full">오늘의 고마움</span>
                 </div>
                 <h3 class="text-[15px] font-extrabold text-[#2D3436] mb-1.5">${esc(state.partnerName)}님에게 고마운 거 하나</h3>
-                <p class="text-[13px] text-[#4A5568] leading-relaxed">“${esc(quote.q)}” <span class="whitespace-nowrap text-[12px] text-[#9AA5A9]">도서 『긍정학개론』 중에서</span></p>
+                <p class="text-[13px] text-[#4A5568] leading-relaxed">“${esc(quote.q)}”</p>
+                <p class="text-[12px] text-[#9AA5A9] mt-0.5">도서 『긍정학개론』 중에서</p>
                 <a href="${BOOK_LINKS.card}" target="_blank" rel="noopener" data-book-link="card" class="block w-fit mt-1 text-[12px] leading-4 font-normal text-[#E0665B]">이 구절이 나온 책 보기</a>
                 ${!sent ? `
                   <div class="flex gap-1.5 overflow-x-auto mt-3 pb-2 no-scrollbar">
@@ -1124,7 +1329,7 @@
                     <div class="flex items-start gap-2 animate-pop">
                       <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
                       <div class="max-w-[85%] ${msg.type === 'notice' ? 'bg-[#FFF8E7] border-[#FFB74D]/50' : 'bg-white border-[#FF8A80]/15'} rounded-2xl rounded-tl-sm px-3.5 py-3 border shadow-sm">
-                        <p class="text-[13px] text-[#2D3436] leading-relaxed">${esc(msg.text)}</p>
+                        <p class="text-[13px] text-[#2D3436] leading-relaxed">${esc(secretCopy(msg.text))}</p>
                       </div>
                     </div>
                   `;
@@ -1133,7 +1338,7 @@
                 const draft = drafts[msg.draftIdx || 0] || drafts[0];
                 const replyBubble = `
                       <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-3 border border-[#FF8A80]/15 shadow-sm">
-                        <p class="text-[13px] text-[#2D3436] leading-relaxed whitespace-pre-line">${esc(msg.empathy)}</p>
+                        <p class="text-[13px] text-[#2D3436] leading-relaxed whitespace-pre-line">${esc(secretCopy(msg.empathy))}</p>
                         ${msg.fallback ? '<p class="mt-1.5 text-[10px] text-[#B2BEC3]">AI 연결이 잠시 불안정해서 기본 답변을 보여드렸어요</p>' : ''}
                       </div>`;
                 if (!draft) {
@@ -1174,6 +1379,7 @@
                   </div>
                 `;
               }).join('')}
+              ${renderSecretInfoCard()}
               ${state.botTyping ? `
                 <div id="bot-typing" class="flex items-start gap-2 animate-pop">
                   <img src="${AVATAR_SRC}" alt="사이봇" class="w-8 h-8 rounded-full object-cover border border-[#FF8A80]/30 shrink-0" />
@@ -1183,6 +1389,7 @@
 
             <!-- 빠른 태그 + 입력창 -->
             <div class="bg-white border-t border-[#FF8A80]/15 px-3.5 pt-2.5 pb-3">
+              ${renderSecretInfoLine()}
               <div class="flex gap-1.5 overflow-x-auto pb-2 no-scrollbar">
                 ${QUICK_TAGS.map((t) => `
                   <button type="button" data-action="quick-tag" data-sample="${esc(t.sample)}" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#FFF9F5] text-[#2D3436] border border-[#FF8A80]/30 hover:bg-[#FF8A80] hover:text-white transition-colors">
@@ -1301,6 +1508,7 @@
             </div>
 
             ${renderComboTabCard()}
+            ${renderReportTabCard()}
 
             <div class="bg-white rounded-2xl p-4 border border-[#2D3436]/8 shadow-sm space-y-3">
               <p class="text-xs font-bold text-[#2D3436]">우리 커플 초대 코드</p>
@@ -1416,6 +1624,7 @@
       function renderModals() {
         let html = '';
         if (state.showCombo) html += renderComboModal();
+        if (state.showReport && reportVisible()) html += renderReportModal();
         if (state.showSettings) {
           html += `
             <div class="fixed inset-0 z-50 bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
@@ -1450,6 +1659,12 @@
                     </div>
                   </div>
 
+                  ${paywallOn() && state.partnerJoined ? `
+                  <div class="flex items-center justify-between rounded-xl bg-[#FFF9F5] border border-[#FF8A80]/15 px-3 py-2.5">
+                    <span class="font-bold text-[#636E72]">리포트에 비밀방 주제 쓰기 <span class="font-normal text-[#9AA5A9]">· ${state.paywall.report_consent === true ? '켜짐' : '꺼짐'}</span></span>
+                    <button type="button" data-action="${state.paywall.report_consent === true ? 'withdraw-secret-report' : 'grant-secret-report'}" class="px-3 py-1.5 rounded-lg bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">${state.paywall.report_consent === true ? '끄기' : '켜기'}</button>
+                  </div>` : ''}
+
                   <button type="button" data-action="open-install" class="w-full text-left rounded-2xl bg-white border border-[#2D3436]/8 px-3.5 py-3 flex items-center justify-between">
                     <span>
                       <span class="block font-bold text-[#2D3436]">홈 화면에 추가</span>
@@ -1465,6 +1680,17 @@
                 <button type="button" data-action="logout-ask" class="mt-5 w-full py-3 rounded-2xl border border-[#FF8A80]/30 text-[#E0665B] text-xs font-extrabold bg-white hover:bg-[#FFF0EE]">
                   로그아웃
                 </button>
+              </div>
+            </div>
+          `;
+        }
+
+        if (capNotice) {
+          html += `
+            <div class="fixed inset-0 z-[70] bg-[#2D3436]/45 flex items-end sm:items-center justify-center p-4">
+              <div class="bg-white rounded-3xl w-full max-w-[400px] p-5 shadow-2xl space-y-3">
+                <p class="text-sm font-bold text-[#2D3436] leading-relaxed">오늘은 여기까지 들을게요. 마음이 아직 남았다면 내일 다시 이야기해 주세요.</p>
+                <button type="button" data-action="cap-ok" class="w-full py-2.5 rounded-xl bg-[#FF8A80] text-white text-xs font-extrabold">알겠어요</button>
               </div>
             </div>
           `;
@@ -1582,6 +1808,7 @@
       }
 
       async function enterCouple(c, toastMsg) {
+        paywallCheckedAt = 0;
         applyCouple(c);
         loadLocalForUser();
         if (state.role === 'B' && !localStorage.getItem(localKey())) state.activeTab = 'missions';
@@ -1653,6 +1880,7 @@
           state.activeTab = btn.getAttribute('data-tab') || 'saibot';
           saveState();
           render();
+          if (state.activeTab === 'warmth' && paywallOn() && await refreshPaywall(true)) render();
         } else if (action === 'quick-tag') {
           state.draftInput = btn.getAttribute('data-sample') || '';
           render();
@@ -1677,6 +1905,11 @@
               res = localFallback(text, role);
             }
             state.botTyping = false;
+            if (res && res.capped) {
+              capNotice = true;
+              render();
+              return;
+            }
             state.chats[role].push({
               id: 'b-' + Date.now(),
               sender: 'bot',
@@ -1808,6 +2041,7 @@
           state.showInstallGuide = false;
           state.showLogoutConfirm = false;
           state.showCombo = false;
+          state.showReport = false;
           render();
         } else if (action === 'save-settings') {
           const myEl = document.getElementById('set-my-name');
@@ -1838,6 +2072,9 @@
         } else if (action === 'logout-ask') {
           hideToast();
           state.showLogoutConfirm = true;
+          render();
+        } else if (action === 'cap-ok') {
+          capNotice = false;
           render();
         } else if (action === 'logout-cancel') {
           state.showLogoutConfirm = false;
@@ -1902,6 +2139,74 @@
           const url = location.origin + location.pathname;
           const text = comboShareText(info);
           shareOrCopy({ title: '우리사이', text: text, url: url }, text + '\n' + url).then((r) => { if (r === 'shared' || r === 'copied') logEvent('combo_shared'); });
+        } else if (action === 'open-report') {
+          if (!reportVisible()) return;
+          hideToast();
+          logEvent('report_teaser_click');
+          state.showReport = true;
+          render();
+          if (await refreshPaywall(true)) render();
+          if (reportVisible()) logEvent(state.report.paid ? 'report_view' : 'paywall_view');
+        } else if (action === 'pay-open') {
+          if (state.report && state.report.posts_ready !== true) return;
+          if (!reportVisible() || state.report.paid) return;
+          if (!state.report.pay_code) {
+            if (state.busy) return;
+            state.busy = true;
+            logEvent('paywall_click');
+            try {
+              const c = await rpc('request_pay_code', {});
+              if (c && c.pay_code) state.report = Object.assign({}, state.report, { pay_code: c.pay_code, paid: Boolean(c.paid) });
+            } catch (_e) {
+              showToast('잠시 후 다시 시도해 주세요');
+            }
+            state.busy = false;
+            render();
+            return;
+          }
+          logEvent('paywall_checkout_open');
+          try { localStorage.setItem(checkoutKey(), '1'); } catch (_e) {}
+          window.open(state.paywall.checkout_url, '_blank', 'noopener');
+          render();
+        } else if (action === 'copy-pay-code') {
+          const code = state.report && state.report.pay_code;
+          if (!code) return;
+          logEvent('pay_code_copy');
+          try {
+            await navigator.clipboard.writeText(code);
+            showToast('복사 완료!');
+          } catch (_e) {
+            showToast(code);
+          }
+        } else if (action === 'secret-info-ok') {
+          if (!paywallOn()) return;
+          secretInfoAcked = true;
+          render();
+          const r = await sbFetchQuiet('rpc/consent_secret_report', { method: 'POST', body: '{}' });
+          if (r && r.consented === true) {
+            try { localStorage.setItem(secretInfoKey(), '1'); } catch (_e) {}
+            if (state.paywall) state.paywall.report_consent = true;
+          }
+        } else if (action === 'grant-secret-report') {
+          // 설정의 [켜기]: 비밀방 안내 카드의 [확인했어요]와 같은 동의를 다시 기록한다
+          if (!paywallOn()) return;
+          const r = await sbFetchQuiet('rpc/consent_secret_report', { method: 'POST', body: '{}' });
+          if (!r || r.consented !== true) { showToast('잠시 후 다시 시도해 주세요'); return; }
+          if (state.paywall) state.paywall.report_consent = true;
+          secretInfoAcked = true;
+          try { localStorage.setItem(secretInfoKey(), '1'); } catch (_e) {}
+          render();
+        } else if (action === 'withdraw-secret-report') {
+          // [확인했어요] 끄기: 서버에서 동의·주제 키를 지우면 비밀방 안내 카드가 다시 뜬다
+          const r = await sbFetchQuiet('rpc/withdraw_secret_report', { method: 'POST', body: '{}' });
+          if (!r || r.consented !== false) { showToast('잠시 후 다시 시도해 주세요'); return; }
+          if (state.paywall) state.paywall.report_consent = false;
+          secretInfoAcked = false;
+          try { localStorage.removeItem(secretInfoKey()); } catch (_e) {}
+          render();
+        } else if (action === 'secret-info-toggle') {
+          state.secretInfoOpen = !state.secretInfoOpen;
+          render();
         } else if (action === 'gratitude-example') {
           const i = Number(btn.getAttribute('data-idx'));
           if (i !== -1 && !GRATITUDE_EXAMPLES[i]) return;

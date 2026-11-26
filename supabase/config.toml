@@ -1,0 +1,6 @@
+# Only the function settings this repo relies on. project: iyligsrpaxitlpuwbdjx
+project_id = "saibot"
+
+[functions.imweb-poll]
+# Called only by pg_cron with the x-imweb-poll-secret header (checked in code). No browser access, no CORS.
+verify_jwt = false
