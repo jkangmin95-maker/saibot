@@ -11,7 +11,12 @@
   <link rel="apple-touch-icon" href="./icon-192.png" />
   <link rel="icon" href="./icon-192.png" />
   <title>우리사이 - 커플 감정 번역 & 다정함 코칭</title>
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <meta property="og:title" content="우리사이 - 커플 감정 번역 & 다정함 코칭" />
+  <meta property="og:description" content="커플 감정 번역 & 다정함 코칭" />
+  <meta property="og:image" content="https://jkangmin95-maker.github.io/saibot/og.png" />
+  <meta property="og:url" content="https://jkangmin95-maker.github.io/saibot/" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2/dist/umd/supabase.js" integrity="sha384-A97u3Qnt9GZHURO9YJZRe7VQgGUeFzcv6I1oIGnUTxQrCxnpQMwR0/G8F2zt9abZ" crossorigin="anonymous"></script>
   <style>
     * { -webkit-tap-highlight-color: transparent; }
@@ -36,6 +41,8 @@
     }
     .animate-pop { animation: popIn 0.25s ease-out forwards; }
   </style>
+  <!-- After the page <style> so utilities win over .safe-top/.safe-bottom, matching the old CDN inject order. -->
+  <link rel="stylesheet" href="./app.css" />
 </head>
 <body class="min-h-screen flex justify-center bg-[#F4ECE6]">
   <!-- 폰에서는 전체 화면, 데스크톱에서는 가운데 정렬된 모바일 뷰포트 -->
@@ -50,7 +57,7 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v10";
+      const APP_VERSION = "v10.1";
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
@@ -1657,12 +1664,18 @@
               await navigator.share({ title: '우리사이', text: text, url: url });
             } else {
               await navigator.clipboard.writeText(text + '\n' + url);
-              showToast('복사 완료!');
+              showToast('링크 복사 완료!');
             }
             logEvent('combo_shared');
           } catch (err) {
             if (err && err.name === 'AbortError') return;
-            showToast('잠시 후 다시 시도해 주세요');
+            try {
+              await navigator.clipboard.writeText(text + '\n' + url);
+              showToast('링크 복사 완료!');
+              logEvent('combo_shared');
+            } catch (_e) {
+              showToast('잠시 후 다시 시도해 주세요');
+            }
           }
         } else if (action === 'copy-code') {
           try {

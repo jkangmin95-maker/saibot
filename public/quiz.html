@@ -8,6 +8,12 @@
   <link rel="icon" href="./icon-192.png" />
   <link rel="apple-touch-icon" href="./icon-192.png" />
   <title>우리사이 - 서로 맞히기</title>
+  <meta property="og:title" content="우리사이 - 서로 맞히기" />
+  <meta property="og:description" content="연인은 나를 몇 개나 맞힐까요?" />
+  <meta property="og:image" content="https://jkangmin95-maker.github.io/saibot/og.png" />
+  <meta property="og:url" content="https://jkangmin95-maker.github.io/saibot/quiz.html" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
   <!-- quiz.css: Tailwind 3.4.17 classes used by this page, compiled ahead of time (no CDN script on this page). -->
   <link rel="stylesheet" href="./quiz.css" />
   <style>
@@ -151,6 +157,15 @@
         return String(v || '').replace(/<[^>]*>/g, '').replace(/[<>&"'`\r\n\t]/g, '').trim().slice(0, 12);
       }
 
+      // 한글 음절 종성(받침)이 있으면 '이', 없으면(그리고 비한글이면) '가'
+      function subjectParticle(name) {
+        const ch = String(name || '').slice(-1);
+        if (!ch) return '가';
+        const code = ch.charCodeAt(0);
+        if (code < 0xAC00 || code > 0xD7A3) return '가';
+        return ((code - 0xAC00) % 28) ? '이' : '가';
+      }
+
       // ---------- layout ----------
       function shell(children) {
         const root = document.getElementById('app');
@@ -231,6 +246,15 @@
         const card = h('div', CARD + ' animate-pop space-y-5');
         card.appendChild(progress(TOTAL));
         card.appendChild(btn('연인에게 맞히기 보내기', PRIMARY, sendToPartner));
+        if (S.shareToken) {
+          const link = h('input', 'w-full text-xs text-[#4A5568] text-center bg-[#FFF9F5] border border-[#FF8A80]/20 rounded-xl px-3 py-2.5 select-all');
+          link.type = 'text';
+          link.readOnly = true;
+          link.value = baseUrl() + '#q=' + S.shareToken;
+          link.setAttribute('aria-label', '공유 링크');
+          link.addEventListener('focus', function () { link.select(); });
+          card.appendChild(link);
+        }
         shell([h('div', 'h-6'), card]);
       }
 
@@ -243,9 +267,14 @@
             S.shareToken = r.token;
             S.aName = r.a_name; S.bName = r.b_name;
           }
-          await shareText(S.aName + '가 문제 냈어. 나에 대해 몇 개나 맞힐 수 있어? 👀', baseUrl() + '#q=' + S.shareToken);
+          await shareText(S.aName + subjectParticle(S.aName) + ' 문제 냈어. 나에 대해 몇 개나 맞힐 수 있어? 👀', baseUrl() + '#q=' + S.shareToken);
+          go('send');
         } catch (err) {
-          if (isGone(err)) go('expired'); else showToast('잠시 후 다시 시도해 주세요');
+          if (isGone(err)) go('expired');
+          else {
+            if (S.shareToken) go('send');
+            showToast('잠시 후 다시 시도해 주세요');
+          }
         } finally {
           S.busy = false;
         }
