@@ -145,7 +145,7 @@ export function createHandler(env: Env, fetchImpl: Fetch = fetch, now: () => num
         counts[res] = (counts[res] ?? 0) + 1;
         // order numbers only (no codes, names, phones or emails) so the owner can look the order up in 아임웹
         if (res === "unknown_code" || res === "no_code" || res === "bad_input") console.warn(`imweb-poll: ${res} order ${d.orderNo}`);
-        if (res === "unlocked" || res === "revoked" || res === "repointed") console.log(`imweb-poll: ${res} order ${d.orderNo}`);
+        if (res === "unlocked" || res === "revoked") console.log(`imweb-poll: ${res} order ${d.orderNo}`);
         if (res === "no_lease") throw new PollError("lease_lost");
       }
     } catch (e) {

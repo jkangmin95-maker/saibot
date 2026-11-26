@@ -50,11 +50,12 @@ probe v11again; same "v11 up after down, flag OFF: sai_chat request identical to
 V111=supabase_migration_v11_1_imweb
 echo "== v11.1"
 apply $V111.sql "v11.1 up"; apply $V111.sql "v11.1 up again"; run_tests scripts/test_v11.sql; run_tests scripts/test_v11_1.sql
-$P -d $DB -c "insert into public.couples(code) values ('DOWNT')" -c "insert into private.couple_entitlements(couple_code, pay_code, report_paid, paid_at, paid_source, payment_ref) values ('DOWNT', 'UR-DDDDDD', true, now(), 'imweb', '42')" >/dev/null
+$P -d $DB -c "insert into public.couples(code) values ('DOWNT')" -c "insert into private.couple_entitlements(couple_code, pay_code) values ('DOWNT', 'UR-DDDDDD')" -c "insert into private.couple_passes(couple_code, source, ref) values ('DOWNT', 'imweb', '42/OI42')" -c "select private.recompute_paid_until('DOWNT')" >/dev/null
 apply ${V111}_down.sql "v11.1 down"
-echo "  imweb-paid couple after down (expect t|manual|42): $($P -d $DB -tAc "select report_paid, paid_source, payment_ref from private.couple_entitlements where couple_code='DOWNT'")"
+got=$($P -d $DB -tAc "select (e.paid_until = p.paid_at + interval '30 days')::text || '|' || e.paid_source || '|' || e.payment_ref || '|' || p.source from private.couple_entitlements e join private.couple_passes p using (couple_code) where couple_code='DOWNT'")
+if [ "$got" = "true|manual|42/OI42|manual" ]; then echo "  PASS imweb pass after down: still 30 days, relabeled manual, ref kept ($got)"; else echo "  FAIL imweb pass after down: $got"; TOTAL_FAIL=$((TOTAL_FAIL + 1)); fi
 $P -d $DB -c "delete from public.couples where code='DOWNT'" >/dev/null
-echo "  left after v11.1 down: tables=$($P -d $DB -tAc "select count(*) from pg_tables where schemaname='private' and tablename like 'imweb%'") functions=$($P -d $DB -tAc "select count(*) from pg_proc where proname like 'imweb_%'") imweb_in_check=$($P -d $DB -tAc "select count(*) from pg_constraint where conname='couple_entitlements_paid_source_check' and pg_get_constraintdef(oid) like '%imweb%'")"
+echo "  left after v11.1 down: tables=$($P -d $DB -tAc "select count(*) from pg_tables where schemaname='private' and tablename like 'imweb%'") functions=$($P -d $DB -tAc "select count(*) from pg_proc where proname like 'imweb_%'") imweb_in_check=$($P -d $DB -tAc "select count(*) from pg_constraint where conname in ('couple_entitlements_paid_source_check','couple_passes_source_check') and pg_get_constraintdef(oid) like '%imweb%'")"
 run_tests scripts/test_v11.sql
 apply ${V111}_down.sql "v11.1 down again"
 apply $V111.sql "v11.1 up after down"; run_tests scripts/test_v11.sql; run_tests scripts/test_v11_1.sql

@@ -1,13 +1,13 @@
 # imweb-poll: 아임웹 결제 → 속마음 리포트 자동 열기
 
 Every minute pg_cron calls this function. It reads recent 아임웹 orders, finds 상품 prodNo 11 (우리사이 속마음 리포트),
-reads the buyer's **결제 확인 코드** (UR-XXXXXX) and unlocks or re-locks the couple through `public.imweb_poll_apply`
-(→ `private.set_couple_paid(code, true|false, 'imweb', orderNo)`).
+reads the buyer's **결제 확인 코드** (UR-XXXXXX) and adds or takes back one 30-day pass per order item through `public.imweb_poll_apply`
+(→ `private.set_couple_paid(code, true|false, 'imweb', '<orderNo>/<itemKey>')`, v11 `private.couple_passes`).
 
 | Order state | Action |
 |---|---|
 | payment `PAYMENT_COMPLETE` (not FREE), section not CANCEL_*/RETURN_* | `paid` (or `no_code` if no/ambiguous code) |
-| payment `REFUND_COMPLETE` / `PARTIAL_REFUND_COMPLETE` / `CANCELLED_BEFORE_DEPOSIT`, a completed cancel payment, or section `CANCEL_*` / `RETURN_*` | `revoke` (only re-locks if this order is what unlocked the couple) |
+| payment `REFUND_COMPLETE` / `PARTIAL_REFUND_COMPLETE` / `CANCELLED_BEFORE_DEPOSIT`, a completed cancel payment, or section `CANCEL_*` / `RETURN_*` | `revoke` (takes back only this order item's 30-day pass; other orders and manual unlocks keep their days) |
 | anything else (`PAYMENT_PREPARATION`, `REFUND_PROCESSING`, `REFUND_FAILED`, …) | no change |
 
 Queries per run: orders created in the last 2 days (30 days at UTC minute 0), plus cancel/return requests in the last 2 days.

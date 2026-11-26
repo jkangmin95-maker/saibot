@@ -71,3 +71,8 @@ Deno.test("safeEqual", () => {
   assertEquals(safeEqual("abc", "abcd"), false);
   assertEquals(safeEqual("", ""), false);
 });
+Deno.test("each prodNo item has a stable, distinct itemKey (one 30-day pass per item)", () => {
+  const a = decideAll([F.paid, F.paid_messy_code, F.duplicate], P);
+  assertEquals(a.map((d) => `${d.orderNo}/${d.itemKey}`), ["1001/OI1001", "1002/OI1002"]);
+  assertEquals(decideOrder(F.paid, P)[0].itemKey, decideOrder(F.duplicate, P)[0].itemKey);
+});

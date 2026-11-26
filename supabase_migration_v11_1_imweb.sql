@@ -7,10 +7,12 @@
 --   It reads recent 아임웹 orders for prodNo 11, extracts the buyer's 결제 확인 코드 (UR-XXXXXX) and calls
 --   public.imweb_poll_apply(...) per order item with action 'paid' | 'revoke' | 'no_code'.
 -- * Each order item is remembered in private.imweb_order_items with its last state, so repeats are no-ops.
--- * 'paid'  -> private.set_couple_paid(code, true, 'imweb', orderNo). Unknown code -> state 'unknown_code', nothing unlocked.
--- * 'revoke' (refund / cancel / return) -> only if THIS order item had unlocked the code. If another 아임웹 order item for the
---   same code is still 'paid', the entitlement is re-pointed to it; otherwise set_couple_paid(code, false).
---   A revoke for an item we never saw paid only records the state (it never locks a couple paid by another order).
+-- * 'paid'  -> private.set_couple_paid(code, true, 'imweb', '<orderNo>/<itemKey>'): one 30-day pass per order item
+--   (v11 private.couple_passes; buying again stacks). Unknown code -> state 'unknown_code', nothing unlocked.
+-- * 'revoke' (refund / cancel / return) -> only if THIS order item had been applied as paid: takes back that item's pass
+--   (set_couple_paid(code, false, 'imweb', ref)) and paid_until is replayed from the passes left, so other orders and
+--   manual unlocks keep their days. A revoke for an item we never saw paid only records the state.
+-- * paid again after a revoke (e.g. cancel request rejected) brings the same pass back (same paid_at), never a second one.
 -- * 아임웹 OAuth tokens live in private.imweb_oauth (single row). The refresh token rotates: the function writes the new pair
 --   back with compare-and-swap on the old refresh token (public.imweb_poll_save_tokens), under a short lease that keeps two
 --   runs from refreshing at once.
@@ -23,10 +25,13 @@
 
 begin;
 
--- paid_source gains 'imweb'
+-- paid_source / pass source gain 'imweb'
 alter table private.couple_entitlements drop constraint if exists couple_entitlements_paid_source_check;
 alter table private.couple_entitlements add constraint couple_entitlements_paid_source_check
   check (paid_source in ('manual', 'portone', 'inicis', 'payapp', 'imweb'));
+alter table private.couple_passes drop constraint if exists couple_passes_source_check;
+alter table private.couple_passes add constraint couple_passes_source_check
+  check (source in ('manual', 'portone', 'inicis', 'payapp', 'imweb'));
 
 -- ---------------------------------------------------------------------------
 -- Tables
@@ -114,14 +119,13 @@ begin
 end $$;
 
 -- Apply one order item. p_action: 'paid' | 'revoke' | 'no_code'. Returns one of
--- 'unlocked', 'revoked', 'repointed', 'recorded', 'unknown_code', 'no_code', 'unchanged', 'bad_input', 'no_lease'.
+-- 'unlocked', 'revoked', 'recorded', 'unknown_code', 'no_code', 'unchanged', 'bad_input', 'no_lease'.
 create or replace function public.imweb_poll_apply(p_lease uuid, p_order_no bigint, p_item_key text, p_action text, p_pay_code text)
 returns text language plpgsql volatile security definer set search_path = private, pg_temp as $$
 declare
   r private.imweb_order_items;
   v_code text := nullif(upper(btrim(coalesce(p_pay_code, ''))), '');
-  v_other bigint;
-  e private.couple_entitlements;
+  v_ref text := p_order_no::text || '/' || p_item_key; -- the 30-day pass this item adds
 begin
   if not exists (select 1 from private.imweb_oauth where id and lease_id = p_lease and lease_until > now()) then
     return 'no_lease';
@@ -149,7 +153,7 @@ begin
     if found and r.state = 'paid' and r.pay_code = v_code then return 'unchanged'; end if;
     if found and r.state = 'unknown_code' and r.pay_code = v_code then return 'unchanged'; end if;
     begin
-      perform private.set_couple_paid(v_code, true, 'imweb', p_order_no::text);
+      perform private.set_couple_paid(v_code, true, 'imweb', v_ref);
     exception when sqlstate 'P0002' then
       insert into private.imweb_order_items(order_no, item_key, pay_code, state) values (p_order_no, p_item_key, v_code, 'unknown_code')
       on conflict (order_no, item_key) do update set pay_code = excluded.pay_code, state = 'unknown_code', updated_at = now();
@@ -169,17 +173,12 @@ begin
   end if;
   v_code := r.pay_code; -- the code this item unlocked
   update private.imweb_order_items set state = 'revoked', updated_at = now() where order_no = p_order_no and item_key = p_item_key;
-  select * into e from private.couple_entitlements where pay_code = v_code for update;
-  if not found then return 'revoked'; end if; -- couple deleted meanwhile
-  -- only touch the entitlement if an 아임웹 order is what holds it open (a later manual/other-provider unlock is left alone)
-  if e.report_paid and e.paid_source is distinct from 'imweb' then return 'recorded'; end if;
-  select order_no into v_other from private.imweb_order_items
-    where pay_code = v_code and state = 'paid' order by first_seen_at limit 1;
-  if v_other is not null then
-    perform private.set_couple_paid(v_code, true, 'imweb', v_other::text);
-    return 'repointed';
-  end if;
-  perform private.set_couple_paid(v_code, false);
+  begin
+    -- takes back this item's 30 days only; other orders and manual unlocks keep theirs
+    perform private.set_couple_paid(v_code, false, 'imweb', v_ref);
+  exception when sqlstate 'P0002' then
+    return 'revoked'; -- couple deleted meanwhile
+  end;
   return 'revoked';
 end $$;
 

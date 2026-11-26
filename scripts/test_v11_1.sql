@@ -38,8 +38,13 @@ select pg_temp.ok('imweb_seed_tokens / set_couple_paid: not executable by API ro
 select pg_temp.ok('all v11.1 functions SECURITY DEFINER with pinned search_path',
   (select count(*) = 5 and bool_and(prosecdef and exists (select 1 from unnest(proconfig) c where c like 'search_path=%'))
    from pg_proc where proname in ('imweb_poll_lease', 'imweb_poll_save_tokens', 'imweb_poll_apply', 'imweb_poll_finish', 'imweb_seed_tokens')));
-select pg_temp.ok('paid_source accepts imweb', (select pg_get_constraintdef(oid) like '%imweb%' from pg_constraint
-  where conname = 'couple_entitlements_paid_source_check'));
+select pg_temp.ok('paid_source and pass source accept imweb', (select pg_get_constraintdef(oid) like '%imweb%' from pg_constraint
+  where conname = 'couple_entitlements_paid_source_check') and (select pg_get_constraintdef(oid) like '%imweb%' from pg_constraint
+  where conname = 'couple_passes_source_check'));
+create or replace function pg_temp.until(p_code text) returns timestamptz language sql as $$
+  select paid_until from private.couple_entitlements where pay_code = p_code $$;
+create or replace function pg_temp.paid(p_code text) returns boolean language sql as $$
+  select coalesce(paid_until > now(), false) from private.couple_entitlements where pay_code = p_code $$;
 
 -- service_role cannot read tokens / order log directly
 set local role service_role;
@@ -95,8 +100,8 @@ create or replace function pg_temp.ap(p_order bigint, p_item text, p_action text
 grant execute on function pg_temp.ap(bigint, text, text, text) to service_role;
 select pg_temp.ok('paid -> unlocked', pg_temp.ap(1001, 'OI1001', 'paid', ' ur-abc234 ') = 'unlocked');
 reset role;
-select pg_temp.ok('entitlement paid, source imweb, ref = orderNo',
-  (select report_paid and paid_source = 'imweb' and payment_ref = '1001' and paid_at is not null
+select pg_temp.ok('entitlement paid 30 days, source imweb, ref = orderNo/item',
+  (select paid_until = now() + interval '30 days' and paid_source = 'imweb' and payment_ref = '1001/OI1001' and paid_at is not null
    from private.couple_entitlements where pay_code = 'UR-ABC234'));
 insert into t_v select 'paid_at', paid_at::text from private.couple_entitlements where pay_code = 'UR-ABC234';
 set local role service_role;
@@ -111,44 +116,61 @@ select pg_temp.ok('bad action -> bad_input', pg_temp.ap(1004, 'OI1004', 'delete'
 select pg_temp.ok('paid without code -> bad_input', pg_temp.ap(1004, 'OI1004', 'paid', null) = 'bad_input');
 select pg_temp.ok('order_no 0 -> bad_input', pg_temp.ap(0, 'x', 'paid', 'UR-ABC234') = 'bad_input');
 reset role;
-select pg_temp.ok('other couple untouched', (select not report_paid from private.couple_entitlements where pay_code = 'UR-XYZ789'));
-select pg_temp.ok('unknown/no_code/bad input changed no entitlement',
-  (select count(*) = 1 from private.couple_entitlements where report_paid));
+select pg_temp.ok('other couple untouched', not pg_temp.paid('UR-XYZ789'));
+select pg_temp.ok('unknown/no_code/bad input changed no entitlement, duplicate added no pass',
+  (select count(*) = 1 from private.couple_entitlements where paid_until is not null) and (select count(*) = 1 from private.couple_passes));
 set local role service_role;
 
 -- 6) revoke rules ---------------------------------------------------------------------------------------
 select pg_temp.ok('revoke for an order never seen paid -> recorded, couple stays paid',
   pg_temp.ap(1005, 'OI1005', 'revoke', 'UR-ABC234') = 'recorded');
 reset role;
-select pg_temp.ok('... still paid via 1001', (select report_paid and payment_ref = '1001' from private.couple_entitlements where pay_code = 'UR-ABC234'));
+select pg_temp.ok('... still paid via 1001 (30 days)', pg_temp.until('UR-ABC234') = now() + interval '30 days');
 set local role service_role;
-select pg_temp.ok('second paid order for same code -> unlocked (ref moves to 1006)', pg_temp.ap(1006, 'OI1006', 'paid', 'UR-ABC234') = 'unlocked');
+select pg_temp.ok('second paid order for same code -> unlocked', pg_temp.ap(1006, 'OI1006', 'paid', 'UR-ABC234') = 'unlocked');
 reset role;
-select pg_temp.ok('paid_at kept from first payment', (select paid_at::text = (select v from t_v where k = 'paid_at') and payment_ref = '1006'
-  from private.couple_entitlements where pay_code = 'UR-ABC234'));
+select pg_temp.ok('... stacks: 60 days, paid_at of the newest pass, ref 1006', (select paid_until = now() + interval '60 days'
+  and payment_ref = '1006/OI1006' from private.couple_entitlements where pay_code = 'UR-ABC234'));
 set local role service_role;
-select pg_temp.ok('refund 1006 while 1001 still paid -> repointed', pg_temp.ap(1006, 'OI1006', 'revoke', null) = 'repointed');
+select pg_temp.ok('refund 1006 while 1001 still paid -> revoked', pg_temp.ap(1006, 'OI1006', 'revoke', null) = 'revoked');
 reset role;
-select pg_temp.ok('... still paid, ref back to 1001', (select report_paid and payment_ref = '1001' from private.couple_entitlements where pay_code = 'UR-ABC234'));
+select pg_temp.ok('... takes back 1006''s 30 days only, ref back to 1001', (select paid_until = now() + interval '30 days'
+  and payment_ref = '1001/OI1001' from private.couple_entitlements where pay_code = 'UR-ABC234'));
 set local role service_role;
 select pg_temp.ok('refund 1001 -> revoked', pg_temp.ap(1001, 'OI1001', 'revoke', 'UR-ABC234') = 'revoked');
 reset role;
-select pg_temp.ok('... couple locked, paid fields cleared', (select not report_paid and paid_at is null and paid_source is null and payment_ref is null
+select pg_temp.ok('... couple locked, paid fields cleared', (select paid_until is null and paid_at is null and paid_source is null and payment_ref is null
   from private.couple_entitlements where pay_code = 'UR-ABC234'));
+select pg_temp.ok('... passes kept with revoked_at (audit)', (select count(*) = 2 and bool_and(revoked_at is not null) from private.couple_passes
+  where couple_code = 'T1CPL'));
 set local role service_role;
 select pg_temp.ok('refund again -> unchanged', pg_temp.ap(1001, 'OI1001', 'revoke', 'UR-ABC234') = 'unchanged');
 select pg_temp.ok('cancel request rejected -> paid again -> unlocked', pg_temp.ap(1001, 'OI1001', 'paid', 'UR-ABC234') = 'unlocked');
 reset role;
--- manual unlock of couple 2 is not undone by an imweb refund of an order that did not unlock it
+select pg_temp.ok('... same pass comes back (no second pass), 30 days', (select count(*) = 2 from private.couple_passes where couple_code = 'T1CPL')
+  and pg_temp.until('UR-ABC234') = now() + interval '30 days');
+-- replay: a pass bought 20 days ago + manual pass now; refunding the old one leaves the manual 30 days from now
+update private.couple_passes set paid_at = now() - interval '20 days' where ref = '1001/OI1001';
+select private.recompute_paid_until('T1CPL');
+select pg_temp.ok('1001 bought 20 days ago -> 10 days left', pg_temp.until('UR-ABC234') = now() + interval '10 days');
+select private.set_couple_paid('UR-ABC234');
+select pg_temp.ok('manual unlock stacks on it -> 40 days', pg_temp.until('UR-ABC234') = now() + interval '40 days');
+set local role service_role;
+select pg_temp.ok('refund 1001 -> revoked', pg_temp.ap(1001, 'OI1001', 'revoke', null) = 'revoked');
+reset role;
+select pg_temp.ok('... manual pass alone -> 30 days from now, source manual', (select paid_until = now() + interval '30 days'
+  and paid_source = 'manual' from private.couple_entitlements where pay_code = 'UR-ABC234'));
+-- couple 2: manual unlock + imweb order; refunding the imweb order keeps the manual days
 select private.set_couple_paid('UR-XYZ789', true, 'manual', 'admin');
 set local role service_role;
-select pg_temp.ok('paid order for manually-unlocked code -> unlocked (source imweb)', pg_temp.ap(1007, 'OI1007', 'paid', 'UR-XYZ789') = 'unlocked');
+select pg_temp.ok('paid order for manually-unlocked code -> unlocked (60 days)', pg_temp.ap(1007, 'OI1007', 'paid', 'UR-XYZ789') = 'unlocked');
 reset role;
-select private.set_couple_paid('UR-XYZ789', true, 'manual', 'admin-again');
+select pg_temp.ok('... 60 days', pg_temp.until('UR-XYZ789') = now() + interval '60 days');
 set local role service_role;
-select pg_temp.ok('refund of 1007 after a later manual unlock -> recorded (manual kept)', pg_temp.ap(1007, 'OI1007', 'revoke', null) = 'recorded');
+select pg_temp.ok('refund of 1007 -> revoked', pg_temp.ap(1007, 'OI1007', 'revoke', null) = 'revoked');
 reset role;
-select pg_temp.ok('... couple 2 still paid manually', (select report_paid and paid_source = 'manual' from private.couple_entitlements where pay_code = 'UR-XYZ789'));
+select pg_temp.ok('... couple 2 still paid by the manual pass (30 days)', pg_temp.paid('UR-XYZ789') and (select paid_source = 'manual'
+  and paid_until = now() + interval '30 days' from private.couple_entitlements where pay_code = 'UR-XYZ789'));
 select pg_temp.ok('order log holds only order no / item / code / state', (select count(*) = 6 from private.imweb_order_items)
   and (select array_agg(column_name::text order by ordinal_position) = array['order_no','item_key','pay_code','state','first_seen_at','updated_at']
        from information_schema.columns where table_schema = 'private' and table_name = 'imweb_order_items'));

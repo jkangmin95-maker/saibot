@@ -10,7 +10,9 @@ const env = envFrom((k) => ({
   IMWEB_POLL_SECRET: "s3cret", IMWEB_API_BASE: "https://imweb.test",
 } as Record<string, string>)[k]);
 
-function fake(opts: { expiredAccess?: boolean; leaseBusy?: boolean; saveOk?: boolean; orders?: unknown[] } = {}) {
+// stand-in for the SQL side of 30-day passes: one pass per (orderNo, itemKey); paid twice = no-op; revoke takes back that pass only
+type Ledger = Map<string, { code: string; active: boolean }>;
+function fake(opts: { expiredAccess?: boolean; leaseBusy?: boolean; saveOk?: boolean; orders?: unknown[]; ledger?: Ledger } = {}) {
   const calls: { rpc: Record<string, unknown>[]; urls: string[]; logs: string[] } = { rpc: [], urls: [], logs: [] };
   const store = { access: opts.expiredAccess ? "old-access" : "good-access", refresh: "r1" };
   const f = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -29,6 +31,20 @@ function fake(opts: { expiredAccess?: boolean; leaseBusy?: boolean; saveOk?: boo
         const ok = (opts.saveOk ?? true) && args.p_old_refresh === store.refresh;
         if (ok) { store.access = args.p_access; store.refresh = args.p_refresh; }
         return Response.json(ok);
+      }
+      if (fn === "imweb_poll_apply" && opts.ledger) {
+        const key = `${args.p_order_no}/${args.p_item_key}`, cur = opts.ledger.get(key);
+        if (args.p_action === "paid") {
+          if (cur?.active) return Response.json("unchanged");
+          opts.ledger.set(key, { code: args.p_pay_code, active: true });
+          return Response.json("unlocked");
+        }
+        if (args.p_action === "revoke") {
+          if (!cur?.active) return Response.json("recorded");
+          cur.active = false;
+          return Response.json("revoked");
+        }
+        return Response.json("no_code");
       }
       if (fn === "imweb_poll_apply") return Response.json(args.p_action === "paid" ? "unlocked" : args.p_action === "revoke" ? "revoked" : "no_code");
       if (fn === "imweb_poll_finish") return Response.json(true);
@@ -120,4 +136,29 @@ Deno.test("logs never contain codes, buyer names, emails or phones", async () =>
   try { await createHandler(env, f)(post("s3cret")); } finally { [console.log, console.warn, console.error] = o; }
   const all = lines.join("\n");
   for (const bad of ["UR-", "홍길동", "@example.com", "010-", "good-access", "r1"]) assertEquals(all.includes(bad), false, bad);
+});
+Deno.test("30-day passes: one pass per order item, re-runs are no-ops, re-buy adds one, refund takes back only its own", async () => {
+  const ledger: Ledger = new Map();
+  const run = async (orders: unknown[]) => {
+    const { f } = fake({ orders, ledger });
+    const r = await quiet(() => createHandler(env, f)(post("s3cret")));
+    assertEquals(r.status, 200);
+    return (await r.json()).counts;
+  };
+  const active = () => [...ledger.entries()].filter(([, v]) => v.active).map(([k, v]) => `${k}:${v.code}`).sort();
+  assertEquals((await run([F.paid])).unlocked, 1);
+  assertEquals(active(), ["1001/OI1001:UR-ABC234"]);
+  // next minute: same order again (two pages) + a second purchase by the same couple
+  const c2 = await run([F.paid, F.duplicate, F.paid_messy_code]);
+  assertEquals([c2.unchanged, c2.unlocked], [1, 1]);
+  assertEquals(active(), ["1001/OI1001:UR-ABC234", "1002/OI1002:UR-ABC234"]);
+  // the first order is refunded later: only its pass goes, the re-buy keeps its 30 days
+  const refunded1001 = structuredClone(F.refunded);
+  refunded1001.orderNo = 1001;
+  refunded1001.sections[0].sectionItems[0].orderItemCode = "OI1001";
+  const c3 = await run([refunded1001, F.paid_messy_code]);
+  assertEquals([c3.revoked, c3.unchanged], [1, 1]);
+  assertEquals(active(), ["1002/OI1002:UR-ABC234"]);
+  // refund seen again → recorded only
+  assertEquals((await run([refunded1001])).recorded, 1);
 });
