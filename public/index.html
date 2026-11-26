@@ -211,7 +211,7 @@
     /* 오늘의 미션 카드 위 사이봇 */
     .tm-perch{position:absolute;right:14px;top:-50px;width:72px;height:71px;z-index:3;will-change:transform}
     .tm-perch>[data-sb-slot]{width:72px;height:71px}
-    .tm-bub{right:84px;top:-2px}
+    .tm-bub{right:84px;top:12px}
     .tm-stamp{position:absolute;right:26px;top:58px;width:86px;height:86px;border-radius:50%;border:3px solid #FF8A80;color:#F26D63;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900;font-size:13px;letter-spacing:-.02em;background:rgba(255,255,255,.7);pointer-events:none;z-index:2;transform:rotate(-14deg)}
     .tm-stamp i{font-style:normal;font-size:18px;line-height:1}
     .tm-stamp::before{content:"";position:absolute;inset:4px;border-radius:50%;border:1.5px dashed rgba(255,138,128,.6)}
@@ -1532,6 +1532,21 @@
 
       // 3) 오늘의 미션: 사이봇이 미완료 카드 하나를 날아와 건네고, 했어요를 누르면 도장
       let tmPerchId = null, tmCountPop = false, tmCheer = false;
+      // 미션 말풍선은 다시 그려질 때마다 새 요소가 되므로, 문구와 사라질 시각을 따로 들고 있다가 이어서 보여 주고 2.2초 뒤 지운다.
+      let tmBub = null, tmBubT = null;
+      function tmSay(text, hold) {
+        tmBub = { text: text, until: Date.now() + hold };
+        sbPop(document.querySelector('[data-tm-bub]'), text, 0);
+        clearTimeout(tmBubT);
+        tmBubT = setTimeout(() => {
+          tmBub = null;
+          const b = document.querySelector('[data-tm-bub]');
+          if (!b) return;
+          if (SB_RM || !b.animate) { b.style.opacity = 0; return; }
+          b.getAnimations().forEach((a) => a.cancel());
+          b.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.92) translateY(-4px)' }], { duration: 260, easing: SBE.out, fill: 'forwards' });
+        }, hold);
+      }
       const tmJust = {};
       function tmPickPerch(list) {
         const cur = tmPerchId && list.find((m) => m.id === tmPerchId);
@@ -1545,8 +1560,11 @@
         if (!perch) return;
         const card = perch.closest('[data-mission-card]'), id = card && card.getAttribute('data-mission-card'), x = sbI.perch;
         const body = card && card.querySelector('[data-tm-body]'), bub = perch.querySelector('[data-tm-bub]');
+        if (bub && tmBub && Date.now() < tmBub.until && !bub.getAttribute('data-sb-said')) {
+          bub.textContent = tmBub.text; bub.setAttribute('data-sb-said', tmBub.text); bub.style.opacity = 1; bub.style.transform = 'none';
+        }
         if (tmCountPop) { tmCountPop = false; sbA(document.querySelector('[data-mission-count]'), [{ transform: 'scale(1)' }, { transform: 'scale(1.25)', offset: 0.4 }, { transform: 'scale(1)' }], { duration: 420, easing: SBE.spring }); }
-        if (tmCheer) { tmCheer = false; setTimeout(() => { sbPop(document.querySelector('[data-tm-bub]'), '잘했어요! 차곡차곡 쌓아 둘게요', 2200); if (sbI.perch) sbI.perch.talk(880); }, 200); }
+        if (tmCheer) { tmCheer = false; setTimeout(() => { tmSay('잘했어요! 차곡차곡 쌓아 둘게요', 2200); if (sbI.perch) sbI.perch.talk(880); }, 200); }
         if (!id || card.getAttribute('data-mission-done') === '1' || !sbOnce('tm-deliver:' + id)) return;
         (async () => {
           if (!SB_RM) {
@@ -1556,7 +1574,7 @@
             if (x) { x.fast(false); sbA(x.el.querySelector('.act'), [{ transform: 'scale(1.12,.86)' }, { transform: 'scale(.97,1.04)', offset: 0.5 }, { transform: 'none' }], { duration: 380, easing: SBE.spring }); }
           }
           await sbWait(200);
-          sbPop(perch.isConnected ? bub : document.querySelector('[data-tm-bub]'), '오늘 미션 가져왔어요!', 2200); if (x) x.talk(880);
+          tmSay('오늘 미션 가져왔어요!', 2200); if (x) x.talk(880);
           await sbWait(200);
           if (!SB_RM) await sbA(body, [{ opacity: 0, transform: 'translate(10px,-10px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 450 });
           body.style.opacity = '';
@@ -1575,7 +1593,9 @@
         await sbWait(260);
         sbA(card, [{ transform: 'none' }, { transform: 'translateY(2px) scale(.995)' }, { transform: 'none' }], { duration: 220 });
         await sbWait(40);
-        tmJust[id] = Date.now(); tmCountPop = true; tmCheer = true;
+        tmJust[id] = Date.now(); tmCheer = true;
+        // 혼자 하는 미션(비밀방 본인 미션)은 완료해도 횟수가 안 올라가므로 숫자 튀는 효과도 없다
+        tmCountPop = !(state.selfMissions || []).some((m) => m.id === id);
         return true;
       }
 

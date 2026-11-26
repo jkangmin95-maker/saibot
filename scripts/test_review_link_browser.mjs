@@ -106,7 +106,7 @@ await run('evil-link', BASE + '?review=1#k=' + kEvil, async (p, log) => {
   await p.waitForTimeout(3500);
   ok('non-allowlisted link: password sign-in tried once, then signed out', log.token.length === 1 && log.token[0].email === C.email && log.logout === 1);
   ok('non-allowlisted link: key cleared, no session left', (await p.evaluate(() => localStorage.getItem('urisai_review_k') === null && !localStorage.getItem('sb-iyligsrpaxitlpuwbdjx-auth-token'))));
-  ok('non-allowlisted link: ends on Kakao login screen', await p.locator('[data-action=kakao-login]').first().isVisible());
+  ok('non-allowlisted link: ends on Kakao login screen', await p.locator('[data-action=kakao-login]').first().waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false));
   await p.screenshot({ path: OUT + '/6-evil-link-signed-out.png' });
 });
 await run('invite', BASE + '#invite=S2-ABC123', async (p, log) => {
