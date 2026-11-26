@@ -57,7 +57,7 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v10.3";
+      const APP_VERSION = "v10.4";
 
       // Client-safe defaults (Supabase anon public key). Settings can override.
       const DEFAULT_SUPABASE_URL = "https://iyligsrpaxitlpuwbdjx.supabase.co";
@@ -193,6 +193,8 @@
           missions: [],
           chats: { A: welcomeChat('w-a'), B: welcomeChat('w-b') },
           draftInput: '',
+          gratitudeIdx: 0,
+          gratitudeParts: { b: '어제 ', f: '퇴근길에 데리러 와', a: ' 줘서 고마웠어', mark: true },
           showSettings: false,
           showLogoutConfirm: false,
           showInstallGuide: false,
@@ -920,6 +922,112 @@
         `;
       }
 
+      // ---- v10.4 오늘의 고마움 (매일 고마움 카드) ----
+      // 예시 문장: copy.md '매일 아침 고마움 미션' 시작 문구 + book-quotes.md 2-2. 바꿀 부분(fill)만 칠해 보여 준다.
+      // fill 칸이 비면 empty 문장을 보낸다. 회색 '___'는 CSS로만 그려서 보내는 글자에 절대 들어가지 않는다.
+      const GRATITUDE_EXAMPLES = [
+        { pre: '어제 ', fill: '퇴근길에 데리러 와', post: ' 줘서 고마웠어', empty: '어제 고마웠어' },
+        { pre: '덕분에 ', fill: '오늘 힘내서 출근', post: ' 했어', empty: '덕분이야, 고마워' },
+        { pre: '오늘 ', fill: '발표', post: ' 잘될 거야. 응원해', empty: '오늘도 잘될 거야. 응원해' },
+        { pre: '언제나 ', fill: '', post: ' 해 줘서 고마워', empty: '언제나 고마워' },
+        { pre: '', fill: '저녁', post: ' 챙겨 줘서 고마워', empty: '챙겨 줘서 고마워' },
+        { pre: '바쁠 때도 ', fill: '연락', post: ' 해 줘서 고마워', empty: '바쁠 때도 고마워' }
+      ];
+      // book-quotes.md 2-1 (고마움 카드 전용. 236·237쪽은 이 카드에만 쓴다). 하루에 하나.
+      const GRATITUDE_QUOTES = [
+        { q: '우리가 감사하다고 해야 감사한 것이 되고, 재미있다고 해야 재밌어지고, 칭찬을 해야 칭찬거리가된다.', p: 125 },
+        { q: '마음에도 없는 말을 못 하는 게 아니라, 마음에 말을 만들지 않았을 뿐이다.', p: 125 },
+        { q: '상대에게도 언제나 "덕분이다", "감사하다"라고 생각하라.', p: 135 },
+        { q: "그러니 필사적으로 '그런데'를 버리고 '그리고'를 써라.", p: 136 },
+        { q: "'그리고'를 쓰려면 억지로라도 앞선 내용에 긍정이나 공감을 먼저 해야만 문장이 매끄럽게 이어진다.", p: 136 },
+        { q: '행동을 한 순간 이미 그 호의의 가치는 완성된 것이다.', p: 236 },
+        { q: "당연한 권리가 아니라 '기적 같이 감사한 선물'로 다가오게 된다.", p: 237 }
+      ];
+
+      function kstDay() {
+        try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date()); }
+        catch (_e) { return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10); }
+      }
+      function gratitudeKey() { return 'urisai_gratitude_v104_' + state.coupleCode + '_' + state.role; }
+      function gratitudeSentToday() {
+        try { const v = JSON.parse(localStorage.getItem(gratitudeKey()) || 'null'); return v && v.day === kstDay() ? v : null; } catch (_e) { return null; }
+      }
+      function gratitudeQuote() {
+        const d = kstDay().split('-').map(Number);
+        const n = Math.floor(Date.UTC(d[0], d[1] - 1, d[2]) / 86400000);
+        return GRATITUDE_QUOTES[n % GRATITUDE_QUOTES.length];
+      }
+      // 문장 전체를 자유롭게 고칠 수 있다. 예시 문장에서 칠한 칸만 비우고 나머지를 그대로 두면 그 예시의 empty 문장.
+      // 회색 '___'는 CSS(::before)로만 그려서 textContent에 절대 들어가지 않는다.
+      const GRATITUDE_MAX = 100;
+      function gratitudeNorm(t) { return String(t == null ? '' : t).replace(/\s+/g, ' ').trim(); }
+      function gratitudePartsFor(idx) {
+        const ex = GRATITUDE_EXAMPLES[idx];
+        return ex ? { b: ex.pre, f: ex.fill, a: ex.post, mark: true } : { b: '', f: '', a: '', mark: false };
+      }
+      function gratitudeSentence(idx, parts) {
+        const full = gratitudeNorm(parts.b + parts.f + parts.a);
+        if (!full) return '';
+        const ex = GRATITUDE_EXAMPLES[idx];
+        if (ex && !gratitudeNorm(parts.f) && full === gratitudeNorm(ex.pre + ' ' + ex.post)) return ex.empty;
+        return full.slice(0, GRATITUDE_MAX);
+      }
+      // 편집기 DOM -> { 칠한 칸 앞, 칠한 칸, 뒤 }. 칸이 지워져 없어졌으면 mark=false, 전부 b.
+      function readGratitudeEditor() {
+        const el = document.getElementById('gratitude-text');
+        if (!el) return state.gratitudeParts;
+        const clean = (t) => t.replace(/[\r\n]+/g, ' ');
+        const span = el.querySelector('[data-gratitude-fill]');
+        if (!span) return { b: clean(el.textContent), f: '', a: '', mark: false };
+        const r = document.createRange();
+        r.selectNodeContents(el); r.setEndBefore(span);
+        const b = r.toString();
+        r.selectNodeContents(el); r.setStartAfter(span);
+        return { b: clean(b), f: clean(span.textContent), a: clean(r.toString()), mark: true };
+      }
+      function currentGratitudeSentence() {
+        return gratitudeSentence(state.gratitudeIdx, document.getElementById('gratitude-text') ? readGratitudeEditor() : state.gratitudeParts);
+      }
+
+      function renderGratitudeCard() {
+        const sent = gratitudeSentToday();
+        const quote = gratitudeQuote();
+        const idx = state.gratitudeIdx;
+        const gp = state.gratitudeParts;
+        const canSend = !!gratitudeSentence(idx, gp);
+        return `
+              <div class="animate-pop bg-white rounded-2xl p-4 border ${!sent ? 'border-[#FF8A80] ring-2 ring-[#FF8A80]/15' : 'border-[#2D3436]/8'} shadow-[0_4px_16px_rgba(45,52,54,0.05)] relative" data-gratitude-card>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-[11px] font-bold text-[#FF8A80] bg-[#FFF0EE] px-2.5 py-0.5 rounded-full">오늘의 고마움</span>
+                </div>
+                <h3 class="text-[15px] font-extrabold text-[#2D3436] mb-1.5">${esc(state.partnerName)}님에게 고마운 거 하나</h3>
+                <p class="text-[13px] text-[#4A5568] leading-relaxed">“${esc(quote.q)}” (${quote.p}쪽)</p>
+                ${!sent ? `
+                  <div class="flex gap-1.5 overflow-x-auto mt-3 pb-2 no-scrollbar">
+                    <button type="button" data-action="gratitude-example" data-idx="-1" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-[#FF8A80]/30 transition-colors ${idx === -1 ? 'bg-[#FF8A80] text-white' : 'bg-[#FFF9F5] text-[#2D3436]'}">직접 쓰기</button>
+                    ${GRATITUDE_EXAMPLES.map((g, i) => `
+                      <button type="button" data-action="gratitude-example" data-idx="${i}" class="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-[#FF8A80]/30 transition-colors ${i === idx ? 'bg-[#FF8A80] text-white' : 'bg-[#FFF9F5] text-[#2D3436]'}">${esc(g.pre)}<span class="font-extrabold ${i === idx ? '' : 'text-[#E0665B]'}">${g.fill ? esc(g.fill) : '___'}</span>${esc(g.post)}</button>
+                    `).join('')}
+                    <span class="shrink-0 w-5" aria-hidden="true"></span>
+                  </div>
+                  <div id="gratitude-text" contenteditable="plaintext-only" role="textbox" aria-label="고마운 말" class="min-h-[2.75rem] bg-[#FFF9F5] rounded-2xl border border-[#FF8A80]/30 px-3 py-2.5 text-[13px] text-[#2D3436] leading-relaxed break-words focus:outline-none focus:border-[#FF8A80]" data-gratitude-editor>${esc(gp.b)}${gp.mark ? `<span data-gratitude-fill data-ph="___" class="px-1 rounded-md bg-[#FFF0EE] text-[#E0665B] font-extrabold empty:before:content-[attr(data-ph)] empty:before:text-[#B2BEC3]">${esc(gp.f)}</span>` : ''}${esc(gp.a)}</div>
+                ` : ''}
+                <div class="mt-3.5 pt-3 border-t border-[#2D3436]/5">
+                  ${!sent ? `
+                    <button type="button" data-action="send-gratitude" ${canSend ? '' : 'disabled'} class="${canSend ? '' : 'opacity-60 '}w-full py-2.5 rounded-xl bg-[#FF8A80] hover:bg-[#F26D63] text-white text-xs font-extrabold shadow-sm transition-all">
+                      카톡으로 보내기
+                    </button>
+                  ` : `
+                    <div class="animate-pop flex items-center justify-between bg-[#E8F8F0] text-[#1E8449] px-3 py-2 rounded-xl text-xs font-bold" data-gratitude-stamp>
+                      <span>${sent.bump > 0 ? '오늘의 고마움 보냈어요. 온도가 올랐어요 💛' : '오늘의 고마움 보냈어요 💛'}</span>
+                      ${Number(sent.streak) > 1 ? `<span class="shrink-0 ml-2 whitespace-nowrap" data-gratitude-streak>${Math.floor(Number(sent.streak))}일째 ✓</span>` : ''}
+                    </div>
+                  `}
+                </div>
+              </div>
+        `;
+      }
+
       function renderMissionsTab() {
         // 현재 내 역할에게 온 미션 + 공통 데일리 팁만 노출 (상대방 불만 0%)
         const visibleMissions = state.missions.filter((m) => m.targetRole === 'BOTH' || m.targetRole === state.role);
@@ -932,17 +1040,18 @@
               <div class="flex items-center justify-between">
                 <div>
                   <p class="text-[11px] font-semibold text-white/85">${esc(state.myName)} ♥ ${esc(state.partnerName)} · 코드 ${esc(state.coupleCode)}</p>
-                  <p class="text-base font-extrabold mt-0.5">우리의 다정함 온도 ${state.warmthTemp.toFixed(1)}°C</p>
+                  <p class="text-base font-extrabold mt-0.5">우리의 다정함 온도 <span data-mission-warmth-num>${state.warmthTemp.toFixed(1)}°C</span></p>
                 </div>
                 <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-extrabold text-sm">
                   ${state.completedCount}회
                 </div>
               </div>
               <div class="mt-3 w-full h-1.5 bg-white/30 rounded-full overflow-hidden">
-                <div class="h-full bg-white rounded-full transition-all duration-500" style="width:${Math.min(100, Math.max(12, ((state.warmthTemp - 35) / 10) * 100))}%"></div>
+                <div class="h-full bg-white rounded-full transition-all duration-500" data-mission-warmth-bar style="width:${Math.min(100, Math.max(12, ((state.warmthTemp - 35) / 10) * 100))}%"></div>
               </div>
             </div>
             ${renderConsentRequestCard()}
+            ${renderGratitudeCard()}
 
             <div class="flex items-center justify-between px-1 pt-1">
               <h2 class="text-sm font-extrabold text-[#2D3436]">오늘 도착한 커플 추천 팁</h2>
@@ -1087,9 +1196,9 @@
       let lastRenderedTab = '';
       let warmthMotion = null;
 
-      function warmthFrame(elapsed) {
+      function warmthFrame(elapsed, from) {
         const target = state.warmthTemp;
-        const START = 36.5, RISE = 800, TOTAL = 1200;
+        const START = from == null ? 36.5 : from, RISE = 800, TOTAL = 1200;
         const dir = target >= START ? 1 : -1;
         const peak = target + dir * Math.min(0.6, Math.max(0.2, Math.abs(target - START) * 0.1));
         let value, wobble = 0;
@@ -1104,16 +1213,16 @@
         return { value: value, width: Math.min(100, Math.max(0, warmthPct(value) + wobble)) };
       }
 
-      function paintWarmth(elapsed) {
-        const num = document.querySelector('[data-warmth-num]');
-        const bar = document.querySelector('[data-warmth-bar]');
+      function paintWarmth(elapsed, from, sel) {
+        const num = document.querySelector(sel ? sel.num : '[data-warmth-num]');
+        const bar = document.querySelector(sel ? sel.bar : '[data-warmth-bar]');
         if (!num || !bar) return false;
         if (elapsed >= 1200) {
           num.textContent = state.warmthTemp.toFixed(1) + '°C';
           bar.style.width = warmthPct(state.warmthTemp) + '%';
           return false;
         }
-        const f = warmthFrame(elapsed);
+        const f = warmthFrame(elapsed, from);
         num.textContent = f.value.toFixed(1) + '°C';
         bar.style.width = f.width + '%';
         return true;
@@ -1133,6 +1242,28 @@
           if (paintWarmth(performance.now() - t0)) warmthMotion = requestAnimationFrame(step);
         };
         warmthMotion = requestAnimationFrame(step);
+      }
+
+      // v10.4: 고마움을 보낸 뒤 오늘의 미션 상단 온도에 같은 1.2초 모션 (이전 온도 -> 새 온도)
+      let bumpMotion = null;
+      const MISSION_WARMTH = { num: '[data-mission-warmth-num]', bar: '[data-mission-warmth-bar]' };
+      function startWarmthBump(from) {
+        if (bumpMotion) cancelAnimationFrame(bumpMotion);
+        bumpMotion = null;
+        let reduce = false;
+        try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_e) {}
+        if (reduce || !(state.warmthTemp > from)) return;
+        const bar = document.querySelector(MISSION_WARMTH.bar);
+        if (bar) bar.style.transitionDuration = '0s';
+        const t0 = performance.now();
+        if (!paintWarmth(0, from, MISSION_WARMTH)) return;
+        const step = () => {
+          bumpMotion = null;
+          if (state.activeTab !== 'missions') return;
+          if (paintWarmth(performance.now() - t0, from, MISSION_WARMTH)) bumpMotion = requestAnimationFrame(step);
+          else { const b = document.querySelector(MISSION_WARMTH.bar); if (b) b.style.transitionDuration = ''; }
+        };
+        bumpMotion = requestAnimationFrame(step);
       }
 
       function renderWarmthTab() {
@@ -1369,6 +1500,7 @@
           return;
         }
 
+        const gratCaret = gratitudeCaret();
         const otherPending = state.missions.filter((m) => !m.accepted && (m.targetRole === 'BOTH' || m.targetRole === state.role)).length;
 
         root.innerHTML = `
@@ -1412,6 +1544,7 @@
 
         const sc = document.getElementById('chat-scroll');
         if (sc) sc.scrollTop = sc.scrollHeight;
+        if (gratCaret != null) restoreGratitudeCaret(gratCaret);
 
         if (state.activeTab === 'warmth' && lastRenderedTab !== 'warmth') startWarmthMotion();
         lastRenderedTab = state.activeTab;
@@ -1748,6 +1881,25 @@
           const url = location.origin + location.pathname;
           const text = comboShareText(info);
           shareOrCopy({ title: '우리사이', text: text, url: url }, text + '\n' + url).then((r) => { if (r === 'shared' || r === 'copied') logEvent('combo_shared'); });
+        } else if (action === 'gratitude-example') {
+          const i = Number(btn.getAttribute('data-idx'));
+          if (i !== -1 && !GRATITUDE_EXAMPLES[i]) return;
+          state.gratitudeIdx = i;
+          state.gratitudeParts = gratitudePartsFor(i);
+          render();
+          focusGratitudeFill();
+        } else if (action === 'send-gratitude') {
+          if (gratitudeSentToday() || sendingGratitude) return;
+          const sentence = currentGratitudeSentence();
+          if (!sentence) return;
+          const url = location.origin + location.pathname;
+          const msg = sentence + '\n' + url;
+          // 공유창은 탭 직후 바로 (앞에 await 없음)
+          sendingGratitude = true;
+          shareOrCopy({ text: msg }, msg).then((r) => {
+            if (r !== 'shared' && r !== 'copied') { sendingGratitude = false; return; }
+            return recordGratitude().finally(() => { sendingGratitude = false; });
+          });
         } else if (action === 'copy-code') {
           try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1771,7 +1923,107 @@
         if (e.target && e.target.id === 'emotion-input') {
           state.draftInput = e.target.value;
         }
+        if (e.target && e.target.id === 'gratitude-text') {
+          // 칸이 비면 회색 '___'가 다시 보이도록 남은 <br> 정리
+          const span = e.target.querySelector('[data-gratitude-fill]');
+          if (span && !span.textContent && span.childNodes.length) span.textContent = '';
+          if (!e.target.textContent && e.target.childNodes.length && !span) e.target.textContent = '';
+          state.gratitudeParts = readGratitudeEditor();
+          const ok = !!gratitudeSentence(state.gratitudeIdx, state.gratitudeParts);
+          const sb = document.querySelector('[data-action="send-gratitude"]');
+          if (sb) { sb.disabled = !ok; sb.classList.toggle('opacity-60', !ok); }
+        }
       });
+      document.addEventListener('keydown', (e) => {
+        if (e.target && e.target.id === 'gratitude-text' && e.key === 'Enter') e.preventDefault();
+      });
+      // 붙여넣기는 한 줄 글자로만
+      document.addEventListener('paste', (e) => {
+        if (!(e.target && e.target.closest && e.target.closest('#gratitude-text'))) return;
+        const t = ((e.clipboardData && e.clipboardData.getData('text/plain')) || '').replace(/[\r\n]+/g, ' ');
+        e.preventDefault();
+        try { document.execCommand('insertText', false, t); } catch (_e) {}
+      });
+
+      let sendingGratitude = false;
+      // 예시를 누르면 칠한 칸이 선택된 채로 (빈칸이면 그 안에 커서), 직접 쓰기면 끝에 커서
+      function focusGratitudeFill() {
+        const el = document.getElementById('gratitude-text');
+        if (!el) return;
+        try {
+          el.focus({ preventScroll: true });
+          const span = el.querySelector('[data-gratitude-fill]');
+          const r = document.createRange();
+          r.selectNodeContents(span || el);
+          if (!span) r.collapse(false);
+          const s = window.getSelection();
+          s.removeAllRanges();
+          s.addRange(r);
+        } catch (_e) {}
+      }
+      // 다시 그리기 전후로 커서 위치(글자 수) 유지. 편집기에 포커스가 없으면 null.
+      function gratitudeCaret() {
+        const el = document.getElementById('gratitude-text');
+        if (!el || document.activeElement !== el) return null;
+        try {
+          const s = window.getSelection();
+          if (!s.rangeCount || !el.contains(s.getRangeAt(0).endContainer)) return -1;
+          const span = el.querySelector('[data-gratitude-fill]');
+          if (span && span.contains(s.getRangeAt(0).endContainer) && !span.textContent) return 'fill';
+          const r = document.createRange();
+          r.selectNodeContents(el);
+          r.setEnd(s.getRangeAt(0).endContainer, s.getRangeAt(0).endOffset);
+          return r.toString().length;
+        } catch (_e) { return -1; }
+      }
+      function restoreGratitudeCaret(off) {
+        const el = document.getElementById('gratitude-text');
+        if (!el) return;
+        try {
+          el.focus({ preventScroll: true });
+          const r = document.createRange();
+          const span = el.querySelector('[data-gratitude-fill]');
+          if (off === 'fill' && span) { r.selectNodeContents(span); }
+          else {
+            r.selectNodeContents(el); r.collapse(false);
+            if (typeof off === 'number' && off >= 0) {
+              const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+              let n, left = off;
+              while ((n = w.nextNode())) {
+                if (left <= n.data.length) { r.setStart(n, left); r.collapse(true); break; }
+                left -= n.data.length;
+              }
+            }
+          }
+          const s = window.getSelection();
+          s.removeAllRanges();
+          s.addRange(r);
+        } catch (_e) {}
+      }
+
+      // 보낸 날만 기록 (문장은 서버로 보내지 않음). 서버가 온도를 올려 주면 같은 1.2초 모션.
+      async function recordGratitude() {
+        const prev = state.warmthTemp;
+        let bump = 0, streak = 0;
+        try {
+          const r = await rpc('send_gratitude', {});
+          const k = Number(r && r.streak);
+          if (Number.isFinite(k) && k > 0) streak = Math.min(9999, Math.floor(k));
+          const t = Number(r && r.warmth_temp);
+          if (!Number.isNaN(t)) state.warmthTemp = t;
+          const n = Number(r && r.completed_count);
+          if (!Number.isNaN(n)) state.completedCount = n;
+          const b = Number(r && r.bump);
+          bump = Math.max(0, Number((Number.isNaN(b) ? state.warmthTemp - prev : b).toFixed(1)));
+        } catch (_e) {
+          // 마이그레이션 전이거나 네트워크 오류: 메시지는 이미 나갔으니 보냄 표시만 하고 온도는 그대로
+        }
+        try { localStorage.setItem(gratitudeKey(), JSON.stringify({ day: kstDay(), bump: bump, streak: streak })); } catch (_e) {}
+        state.gratitudeIdx = 0;
+        state.gratitudeParts = gratitudePartsFor(0);
+        render();
+        if (bump > 0) startWarmthBump(prev);
+      }
 
       if (window.visualViewport) {
         const fitViewport = () => {
