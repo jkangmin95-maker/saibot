@@ -199,7 +199,17 @@ set local role service_role;
 select pg_temp.ok('qty 3 item on a code with 0 days -> 90 days', pg_temp.apq(2003, 'OI2003', 'paid', 'UR-QTY222', 3) = 'unlocked');
 reset role;
 select pg_temp.ok('... 90 days', pg_temp.until('UR-QTY222') = now() + interval '90 days');
-delete from public.couples where code = 'QTYC';
+insert into public.couples(code) values ('QTYD');
+insert into private.couple_entitlements(couple_code, pay_code) values ('QTYD', 'UR-QTY333');
+set local role service_role;
+select pg_temp.ok('code on a paid item changes to another couple''s code -> bad_input', pg_temp.apq(2003, 'OI2003', 'paid', 'UR-QTY333', 3) = 'bad_input');
+select pg_temp.ok('... and after revoke, re-paid with the other code -> bad_input',
+  pg_temp.apq(2003, 'OI2003', 'revoke', 'UR-QTY222', 3) = 'revoked' and pg_temp.apq(2003, 'OI2003', 'paid', 'UR-QTY333', 3) = 'bad_input');
+reset role;
+select pg_temp.ok('... QTYD got no pass, the item pass stays with QTYC (revoked)', not pg_temp.paid('UR-QTY333')
+  and not exists (select 1 from private.couple_passes where couple_code = 'QTYD')
+  and (select bool_and(revoked_at is not null) from private.couple_passes where ref = '2003/OI2003' and couple_code = 'QTYC'));
+delete from public.couples where code in ('QTYC', 'QTYD');
 
 -- 7) finish ---------------------------------------------------------------------------------------------
 set local role service_role;

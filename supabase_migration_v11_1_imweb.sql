@@ -157,9 +157,13 @@ begin
     if v_code is null then return 'bad_input'; end if;
     if found and r.state = 'paid' and r.pay_code = v_code and r.qty = p_qty then return 'unchanged'; end if;
     if found and r.state = 'unknown_code' and r.pay_code = v_code and r.qty = p_qty then return 'unchanged'; end if;
+    -- the code on an item that already granted a pass changed: the pass stays with the first couple (owner checks the order)
+    if found and r.state in ('paid', 'revoked') and r.pay_code is not null and r.pay_code <> v_code then return 'bad_input'; end if;
     begin
       perform private.set_couple_paid(v_code, true, 'imweb', v_ref, 30 * p_qty);
-    exception when sqlstate 'P0002' then
+    exception when sqlstate 'P0001' then
+      return 'bad_input'; -- ref_belongs_to_other_couple
+    when sqlstate 'P0002' then
       insert into private.imweb_order_items(order_no, item_key, pay_code, state, qty) values (p_order_no, p_item_key, v_code, 'unknown_code', p_qty)
       on conflict (order_no, item_key) do update set pay_code = excluded.pay_code, state = 'unknown_code', qty = excluded.qty, updated_at = now();
       return 'unknown_code';
