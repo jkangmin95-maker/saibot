@@ -1,4 +1,4 @@
-const CACHE_NAME = 'urisai-pwa-v10-5';
+const CACHE_NAME = 'urisai-pwa-v10-6';
 const ASSETS = ['./manifest.json', './icon-192.png', './icon-512.png', './og.png', './app.css'];
 
 self.addEventListener('install', (event) => {
