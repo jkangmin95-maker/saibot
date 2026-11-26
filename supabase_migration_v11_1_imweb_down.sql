@@ -1,6 +1,8 @@
 -- Rollback for supabase_migration_v11_1_imweb.sql. Run supabase_cron_v11_1_imweb.sql's unschedule line FIRST.
 -- Deletes the stored 아임웹 tokens and the processed-order log. Entitlements stay as they are; any row with
 -- paid_source = 'imweb' is relabeled 'manual' (still paid, payment_ref kept) so the v11 check constraint can come back.
+-- WARNING: private.imweb_oauth holds the ONLY live 아임웹 refresh token once the poller has rotated it (the box file is stale).
+-- After this down, re-running the up needs a fresh token pair from the 아임웹 app authorize flow, not the old box file.
 begin;
 drop function if exists public.imweb_poll_finish(uuid, text);
 drop function if exists public.imweb_poll_apply(uuid, bigint, text, text, text);

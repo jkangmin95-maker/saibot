@@ -18,7 +18,7 @@ select cron.schedule('imweb-poll', '* * * * *', $job$
       'Content-Type', 'application/json',
       'x-imweb-poll-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'imweb_poll_secret')),
     body := '{}'::jsonb,
-    timeout_milliseconds := 25000);
+    timeout_milliseconds := 55000);  -- > the function's 40 s paging budget, < the 60 s schedule
 $job$);
 
 -- Check:   select jobid, schedule, active from cron.job where jobname = 'imweb-poll';

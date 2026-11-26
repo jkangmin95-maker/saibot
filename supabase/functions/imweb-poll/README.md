@@ -15,8 +15,10 @@ Logs carry counts and order numbers only — never codes, names, phones, emails 
 
 ## Deploy (owner, in order)
 1. SQL editor: `supabase_migration_v11_1_imweb.sql` (after v11).
-2. Seed tokens once: `scripts/imweb_seed_tokens.sh` (or `select private.imweb_seed_tokens('<access>', '<refresh>');`).
-   From then on the DB copy is the live one; don't refresh from the box file anymore.
+2. Seed tokens once with `scripts/imweb_seed_tokens.sh` only. Don't paste tokens into the SQL editor (query history keeps
+   them, and a failed statement is written to the Postgres log with its literals). The script sends them as bind parameters.
+   It also writes `<token file>.db-seeded`; from then on the DB copy is the live one and the box helper
+   (`/workspace/imweb-work/api.py`) refuses to refresh from the box file unless `IMWEB_ALLOW_BOX_REFRESH=1`.
 3. Function secrets (Dashboard → Edge Functions → Secrets, or `supabase secrets set`):
    `IMWEB_CLIENT_ID`, `IMWEB_CLIENT_SECRET`, `IMWEB_POLL_SECRET` (new random value, e.g. `openssl rand -hex 32`).
    Optional: `IMWEB_UNIT_CODE` (default u202606249b836b8dc5010), `IMWEB_PROD_NO` (default 11).

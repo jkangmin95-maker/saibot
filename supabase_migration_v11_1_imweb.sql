@@ -67,6 +67,10 @@ create or replace function private.imweb_seed_tokens(p_access text, p_refresh te
 returns boolean language plpgsql volatile security definer set search_path = private, pg_temp as $$
 begin
   if p_refresh is null or char_length(btrim(p_refresh)) = 0 then raise exception 'refresh_token_required'; end if;
+  -- validate here (generic message) so a CHECK violation can never echo token values in an error DETAIL / server log
+  if char_length(btrim(p_refresh)) > 4000 or char_length(coalesce(btrim(p_access), '')) > 4000 then
+    raise exception 'token_too_long';
+  end if;
   insert into private.imweb_oauth(id, access_token, refresh_token) values (true, nullif(btrim(p_access), ''), btrim(p_refresh))
   on conflict (id) do update set access_token = excluded.access_token, refresh_token = excluded.refresh_token,
     token_updated_at = now(), lease_id = null, lease_until = null, updated_at = now();
@@ -93,14 +97,19 @@ end $$;
 
 -- Write a refreshed token pair. Compare-and-swap on the refresh token that was used, so a rotated token is never
 -- overwritten by a stale run. Returns false when the stored refresh token changed in the meantime.
+-- p_lease is deliberately NOT part of the condition: by the time this runs 아임웹 has already spent p_old_refresh, so if the
+-- DB still holds p_old_refresh the new pair is the only valid one and must be kept even if this run's lease expired
+-- (dropping it would strand the DB on a dead refresh token). The refresh-token CAS alone stops stale overwrites.
+-- Lengths are checked here so a CHECK violation can never echo token values in an error DETAIL / server log.
 create or replace function public.imweb_poll_save_tokens(p_lease uuid, p_old_refresh text, p_access text, p_refresh text)
 returns boolean language plpgsql volatile security definer set search_path = private, pg_temp as $$
 begin
-  if p_old_refresh is null or p_access is null or char_length(p_access) = 0 then return false; end if;
+  if p_old_refresh is null or p_access is null or char_length(p_access) not between 1 and 4000
+     or char_length(coalesce(p_refresh, '')) > 4000 then return false; end if;
   update private.imweb_oauth set access_token = p_access,
     refresh_token = coalesce(nullif(p_refresh, ''), refresh_token),
     token_updated_at = now(), updated_at = now()
-  where id and refresh_token = p_old_refresh and lease_id is not distinct from p_lease;
+  where id and refresh_token = p_old_refresh;
   return found;
 end $$;
 

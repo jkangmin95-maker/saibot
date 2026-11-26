@@ -59,6 +59,7 @@ reset role;
 insert into public.couples(code) values ('T1CPL'), ('T2CPL');
 insert into private.couple_entitlements(couple_code, pay_code) values ('T1CPL', 'UR-ABC234'), ('T2CPL', 'UR-XYZ789');
 select pg_temp.raises('seed needs a refresh token', 'select private.imweb_seed_tokens(''a'', '''')', 'refresh_token_required');
+select pg_temp.raises('seed rejects an over-long token with a generic error', 'select private.imweb_seed_tokens(''a'', repeat(''r'', 4001))', 'token_too_long');
 select pg_temp.ok('owner seeds tokens', private.imweb_seed_tokens('acc-0', 'ref-0'));
 select pg_temp.ok('seed again', private.imweb_seed_tokens('acc-1', 'ref-1'));
 select pg_temp.ok('seed again replaces the pair (one row)', (select count(*) = 1 and bool_and(refresh_token = 'ref-1') from private.imweb_oauth));
@@ -76,12 +77,16 @@ select pg_temp.ok('save with stale refresh token -> false',
   not public.imweb_poll_save_tokens((select v::uuid from t_v where k = 'lease'), 'ref-0', 'acc-x', 'ref-x'));
 select pg_temp.ok('save with current refresh token -> true',
   public.imweb_poll_save_tokens((select v::uuid from t_v where k = 'lease'), 'ref-1', 'acc-2', 'ref-2'));
-select pg_temp.ok('save with wrong lease -> false',
-  not public.imweb_poll_save_tokens(gen_random_uuid(), 'ref-2', 'acc-3', 'ref-3'));
+select pg_temp.ok('save from a run whose lease expired, current refresh -> true (new pair never dropped)',
+  public.imweb_poll_save_tokens(gen_random_uuid(), 'ref-2', 'acc-3', 'ref-3'));
+select pg_temp.ok('... then the old refresh token is stale -> false',
+  not public.imweb_poll_save_tokens((select v::uuid from t_v where k = 'lease'), 'ref-2', 'acc-x', 'ref-x'));
+select pg_temp.ok('over-long token -> false, no error (no token in error DETAIL)',
+  not public.imweb_poll_save_tokens((select v::uuid from t_v where k = 'lease'), 'ref-3', repeat('a', 4001), 'ref-y'));
 select pg_temp.ok('save without new refresh keeps the old one',
-  public.imweb_poll_save_tokens((select v::uuid from t_v where k = 'lease'), 'ref-2', 'acc-4', null));
+  public.imweb_poll_save_tokens((select v::uuid from t_v where k = 'lease'), 'ref-3', 'acc-4', null));
 reset role;
-select pg_temp.ok('stored pair is acc-4 / ref-2', (select access_token = 'acc-4' and refresh_token = 'ref-2' from private.imweb_oauth));
+select pg_temp.ok('stored pair is acc-4 / ref-3', (select access_token = 'acc-4' and refresh_token = 'ref-3' from private.imweb_oauth));
 set local role service_role;
 
 -- 5) apply: paid / duplicate / unknown / no_code / bad input --------------------------------------------
