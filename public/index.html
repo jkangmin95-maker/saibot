@@ -237,7 +237,7 @@
     (function () {
       const AVATAR_SRC = "./icon-192.png";
       const STORAGE_PREFIX = "urisai_state_v8_"; // v9도 같은 키 사용 (대화 기록 유지)
-      const APP_VERSION = "v11-10";
+      const APP_VERSION = "v11-10-1";
 
       // v11.6 사이봇 말풍선 문구 — 전부 여기서만 바꾼다 (Product Marketer 최종 문구). 앱 어디에도 쪽수는 넣지 않는다.
       const SAIBOT_LINES = {
@@ -303,6 +303,37 @@
       function copyInviteQuiet(code) {
         try { if (code && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).catch(function () {}); } catch (_e) {}
       }
+      // v11.9.1 검수 링크: ?review=1#k=<비밀>. k는 검수 전용 테스트 커플(나·연인) 계정 정보다 (실제 계정 아님).
+      // 프래그먼트(#)는 서버·리퍼러로 가지 않는다. 다른 코드가 주소를 읽기 전에 여기서 읽고 바로 주소에서 지운다.
+      // 이 기기(localStorage)에만 두고, 로그아웃하면 지운다. 권한은 서버 allowlist(am_reviewer)가 따로 정한다.
+      const REVIEW_K = 'urisai_review_k';
+      let reviewLogin = '';
+      function decodeReviewK(k) {
+        try {
+          const t = String(k || '').replace(/-/g, '+').replace(/_/g, '/');
+          if (!t || t.length > 600) return null;
+          const j = JSON.parse(atob(t + '='.repeat((4 - (t.length % 4)) % 4)));
+          const ok = (x) => Array.isArray(x) && x.length === 2 && typeof x[0] === 'string' && typeof x[1] === 'string' && x[0] && x[1];
+          if (!j || j.v !== 1 || !ok(j.a) || !ok(j.b)) return null;
+          return { A: { email: j.a[0], pw: j.a[1] }, B: { email: j.b[0], pw: j.b[1] } };
+        } catch (_e) { return null; }
+      }
+      function reviewCreds() {
+        try { return decodeReviewK(localStorage.getItem(REVIEW_K)); } catch (_e) { return null; }
+      }
+      (function captureReviewKey() {
+        try {
+          if (!/(^#|&)k=/.test(location.hash)) return;
+          const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+          const k = h.get('k') || '';
+          h.delete('k');
+          const hs = h.toString();
+          history.replaceState(null, '', location.pathname + location.search + (hs ? '#' + hs : ''));
+          if (!decodeReviewK(k)) return;
+          localStorage.setItem(REVIEW_K, k);
+          reviewLogin = 'A';
+        } catch (_e) {}
+      })();
       // v11.9 ?review=1: 서버 allowlist(am_reviewer)에 있는 계정일 때만 설정을 연다. 값 자체에는 권한이 없다.
       (function captureReview() {
         try {
@@ -2535,6 +2566,45 @@
         if (open && state.reviewer) state.showSettings = true;
         return open || was !== state.reviewer;
       }
+      // v11.9.1 검수 테스트 커플: 나(A) ↔ 연인(B) 계정 전환. 이 기기의 다른 세션은 이 기기에서만 로그아웃된다.
+      let sessionEmail = '';
+      function reviewRole() {
+        const c = reviewCreds();
+        return c && sessionEmail && sessionEmail === c.B.email ? 'B' : 'A';
+      }
+      async function amReviewerNow() {
+        try { const r = await sb.rpc('am_reviewer'); return !!(r && !r.error && r.data === true); } catch (_e) { return false; }
+      }
+      async function reviewSignIn(role, openSettings) {
+        const c = reviewCreds();
+        const acc = c && c[role];
+        if (!sb || !acc) return false;
+        try {
+          const cur = await sb.auth.getSession();
+          const u = cur && cur.data && cur.data.session && cur.data.session.user;
+          if (u && u.email === acc.email) return true;
+          // 링크 때문에 실제 사용자 세션을 끊지 않는다: 서버 allowlist에 있는 세션만 전환할 수 있다
+          if (u && !(await amReviewerNow())) {
+            try { localStorage.removeItem(REVIEW_K); } catch (_e) {}
+            return false;
+          }
+          if (openSettings) { try { sessionStorage.setItem('urisai_review', '1'); } catch (_e) {} }
+          if (u) await sb.auth.signOut({ scope: 'local' });
+          const r = await sb.auth.signInWithPassword({ email: acc.email, password: acc.pw });
+          if (r && r.error) throw r.error;
+          // 링크의 계정도 서버 allowlist에 있어야 한다. 아니면 바로 나간다
+          if (!(await amReviewerNow())) {
+            try { localStorage.removeItem(REVIEW_K); } catch (_e) {}
+            try { sessionStorage.removeItem('urisai_review'); } catch (_e) {}
+            await sb.auth.signOut({ scope: 'local' });
+            throw new Error('not_reviewer');
+          }
+          return true;
+        } catch (_e) {
+          showToast('검수 계정으로 들어가지 못했어요');
+          return false;
+        }
+      }
       async function reviewReset(what) {
         const r = await rpc('review_reset', { p_what: what });
         return r && r.ok === true;
@@ -2832,7 +2902,8 @@
                     <button type="button" data-action="review-reset" data-what="temp" class="py-2.5 rounded-xl bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">온도 다시 재기</button>
                     <button type="button" data-action="review-reset" data-what="gratitude" class="py-2.5 rounded-xl bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">고마움 다시 보내기</button>
                     <button type="button" data-action="review-onboarding" class="py-2.5 rounded-xl bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">온보딩 다시 보기</button>
-                  </div>` : ''}
+                  </div>
+                  ${reviewCreds() ? `<button type="button" data-action="review-switch" class="w-full py-2.5 rounded-xl bg-white border border-[#FF8A80]/30 text-[11px] font-bold text-[#E0665B]">${reviewRole() === 'B' ? '나로 보기' : '상대로 보기'}</button>` : ''}` : ''}
 
                   <button type="button" data-action="open-install" class="w-full text-left rounded-2xl bg-white border border-[#2D3436]/8 px-3.5 py-3 flex items-center justify-between">
                     <span>
@@ -3280,6 +3351,15 @@
           } catch (_e) {
             showToast('초기화하지 못했어요');
           } finally { reviewBusy = false; }
+        } else if (action === 'review-switch') {
+          if (state.reviewer !== true || reviewBusy || !reviewCreds()) return;
+          const to = reviewRole() === 'B' ? 'A' : 'B';
+          reviewBusy = true;
+          try {
+            state.showSettings = false;
+            render();
+            if (await reviewSignIn(to, false)) showToast(to === 'B' ? '연인 화면이에요' : '내 화면이에요');
+          } finally { reviewBusy = false; }
         } else if (action === 'review-onboarding') {
           if (state.reviewer !== true) return;
           try { localStorage.removeItem(ONB_KEY); } catch (_e) {}
@@ -3338,6 +3418,7 @@
           sendingEmotion = false;
           const key = localKey();
           try { if (key) localStorage.removeItem(key); } catch (_e) {}
+          try { localStorage.removeItem(REVIEW_K); } catch (_e) {}
           try { if (sb) await sb.auth.signOut(); } catch (_e) {}
           state = defaultState();
           state.phase = 'signedOut';
@@ -3700,6 +3781,7 @@
         if (!user) return;
         if (bootedUserId === user.id) return;
         bootedUserId = user.id;
+        sessionEmail = String(user.email || '');
         state.userId = user.id;
         state.kakaoName = kakaoNickname(user);
         if (!state.myName) state.myName = state.kakaoName;
@@ -3747,7 +3829,7 @@
               state.phase = 'signedOut';
               render();
             }
-          } else if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
+          } else if (session && (event === 'SIGNED_IN' || (event === 'INITIAL_SESSION' && !reviewLogin))) {
             setTimeout(function () { onSignedIn(session); }, 0);
           }
         });
@@ -3757,6 +3839,14 @@
           session = r && r.data && r.data.session;
         } catch (_e) {}
         cleanAuthUrl();
+        if (reviewLogin) {
+          await reviewSignIn(reviewLogin, true);
+          reviewLogin = '';
+          try {
+            const r2 = await sb.auth.getSession();
+            session = r2 && r2.data && r2.data.session;
+          } catch (_e) { session = null; }
+        }
         if (session) {
           await onSignedIn(session);
         } else {
