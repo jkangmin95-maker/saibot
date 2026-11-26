@@ -1,0 +1,199 @@
+-- 우리사이 v11.1: 아임웹 결제 → 속마음 리포트 자동 열기 (server-side poller state).
+-- Run AFTER supabase_migration_v11_paywall.sql. Safe to run more than once. Rollback: supabase_migration_v11_1_imweb_down.sql
+-- Tests: scripts/test_v11_1.sql (scripts/run_local_sql_tests.sh). Scheduler: supabase_cron_v11_1_imweb.sql (separate, run after deploy).
+--
+-- Flow
+-- * Edge Function imweb-poll (supabase/functions/imweb-poll) runs every minute (pg_cron + pg_net, shared secret header).
+--   It reads recent 아임웹 orders for prodNo 11, extracts the buyer's 결제 확인 코드 (UR-XXXXXX) and calls
+--   public.imweb_poll_apply(...) per order item with action 'paid' | 'revoke' | 'no_code'.
+-- * Each order item is remembered in private.imweb_order_items with its last state, so repeats are no-ops.
+-- * 'paid'  -> private.set_couple_paid(code, true, 'imweb', orderNo). Unknown code -> state 'unknown_code', nothing unlocked.
+-- * 'revoke' (refund / cancel / return) -> only if THIS order item had unlocked the code. If another 아임웹 order item for the
+--   same code is still 'paid', the entitlement is re-pointed to it; otherwise set_couple_paid(code, false).
+--   A revoke for an item we never saw paid only records the state (it never locks a couple paid by another order).
+-- * 아임웹 OAuth tokens live in private.imweb_oauth (single row). The refresh token rotates: the function writes the new pair
+--   back with compare-and-swap on the old refresh token (public.imweb_poll_save_tokens), under a short lease that keeps two
+--   runs from refreshing at once.
+--
+-- Security
+-- * New tables in schema private, RLS on, no policies, nothing granted to anon/authenticated/PUBLIC.
+-- * public.imweb_poll_* : SECURITY DEFINER, pinned search_path, EXECUTE for service_role only (the Edge Function).
+-- * private.imweb_seed_tokens: postgres only (owner seeds the first token pair once from the SQL editor / psql).
+-- * Tokens are never returned except by imweb_poll_lease (service_role); nothing here logs codes or buyer data.
+
+begin;
+
+-- paid_source gains 'imweb'
+alter table private.couple_entitlements drop constraint if exists couple_entitlements_paid_source_check;
+alter table private.couple_entitlements add constraint couple_entitlements_paid_source_check
+  check (paid_source in ('manual', 'portone', 'inicis', 'payapp', 'imweb'));
+
+-- ---------------------------------------------------------------------------
+-- Tables
+-- ---------------------------------------------------------------------------
+create table if not exists private.imweb_oauth (
+  id boolean primary key default true check (id),
+  access_token text check (access_token is null or char_length(access_token) between 1 and 4000),
+  refresh_token text not null check (char_length(refresh_token) between 1 and 4000),
+  token_updated_at timestamptz not null default now(),
+  lease_id uuid,
+  lease_until timestamptz,
+  last_run_at timestamptz,
+  last_ok_at timestamptz,
+  last_status text check (last_status is null or last_status ~ '^[a-z_]{1,40}$'),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists private.imweb_order_items (
+  order_no bigint not null check (order_no > 0),
+  item_key text not null check (char_length(item_key) between 1 and 100),
+  pay_code text check (pay_code is null or pay_code ~ '^UR-[A-Z0-9]{6}$'),
+  state text not null check (state in ('paid', 'revoked', 'unknown_code', 'no_code')),
+  first_seen_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (order_no, item_key)
+);
+create index if not exists imweb_order_items_code_idx on private.imweb_order_items(pay_code) where state = 'paid';
+
+alter table private.imweb_oauth enable row level security;
+alter table private.imweb_order_items enable row level security;
+revoke all on private.imweb_oauth, private.imweb_order_items from public, anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- Owner: seed / replace the token pair (postgres only)
+--   select private.imweb_seed_tokens(:'access', :'refresh');
+-- ---------------------------------------------------------------------------
+create or replace function private.imweb_seed_tokens(p_access text, p_refresh text)
+returns boolean language plpgsql volatile security definer set search_path = private, pg_temp as $$
+begin
+  if p_refresh is null or char_length(btrim(p_refresh)) = 0 then raise exception 'refresh_token_required'; end if;
+  insert into private.imweb_oauth(id, access_token, refresh_token) values (true, nullif(btrim(p_access), ''), btrim(p_refresh))
+  on conflict (id) do update set access_token = excluded.access_token, refresh_token = excluded.refresh_token,
+    token_updated_at = now(), lease_id = null, lease_until = null, updated_at = now();
+  return true;
+end $$;
+revoke all on function private.imweb_seed_tokens(text, text) from public, anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- Poller RPCs (service_role only)
+-- ---------------------------------------------------------------------------
+-- Take the run lease. Returns {lease, access_token, refresh_token} or null when another run holds it / not seeded.
+create or replace function public.imweb_poll_lease(p_seconds integer default 55)
+returns jsonb language plpgsql volatile security definer set search_path = private, pg_temp as $$
+declare o private.imweb_oauth; v_lease uuid := gen_random_uuid();
+begin
+  update private.imweb_oauth set lease_id = v_lease,
+    lease_until = now() + make_interval(secs => least(greatest(coalesce(p_seconds, 55), 10), 300)),
+    last_run_at = now(), updated_at = now()
+  where id and (lease_until is null or lease_until < now())
+  returning * into o;
+  if not found then return null; end if;
+  return jsonb_build_object('lease', o.lease_id, 'access_token', o.access_token, 'refresh_token', o.refresh_token);
+end $$;
+
+-- Write a refreshed token pair. Compare-and-swap on the refresh token that was used, so a rotated token is never
+-- overwritten by a stale run. Returns false when the stored refresh token changed in the meantime.
+create or replace function public.imweb_poll_save_tokens(p_lease uuid, p_old_refresh text, p_access text, p_refresh text)
+returns boolean language plpgsql volatile security definer set search_path = private, pg_temp as $$
+begin
+  if p_old_refresh is null or p_access is null or char_length(p_access) = 0 then return false; end if;
+  update private.imweb_oauth set access_token = p_access,
+    refresh_token = coalesce(nullif(p_refresh, ''), refresh_token),
+    token_updated_at = now(), updated_at = now()
+  where id and refresh_token = p_old_refresh and lease_id is not distinct from p_lease;
+  return found;
+end $$;
+
+-- Apply one order item. p_action: 'paid' | 'revoke' | 'no_code'. Returns one of
+-- 'unlocked', 'revoked', 'repointed', 'recorded', 'unknown_code', 'no_code', 'unchanged', 'bad_input', 'no_lease'.
+create or replace function public.imweb_poll_apply(p_lease uuid, p_order_no bigint, p_item_key text, p_action text, p_pay_code text)
+returns text language plpgsql volatile security definer set search_path = private, pg_temp as $$
+declare
+  r private.imweb_order_items;
+  v_code text := nullif(upper(btrim(coalesce(p_pay_code, ''))), '');
+  v_other bigint;
+  e private.couple_entitlements;
+begin
+  if not exists (select 1 from private.imweb_oauth where id and lease_id = p_lease and lease_until > now()) then
+    return 'no_lease';
+  end if;
+  if p_order_no is null or p_order_no <= 0 or p_item_key is null or char_length(p_item_key) not between 1 and 100
+     or p_action not in ('paid', 'revoke', 'no_code')
+     or (v_code is not null and v_code !~ '^UR-[A-Z0-9]{6}$') then
+    return 'bad_input';
+  end if;
+
+  -- serialize work on this item
+  perform pg_advisory_xact_lock(hashtextextended('imweb:' || p_order_no || ':' || p_item_key, 0));
+  select * into r from private.imweb_order_items where order_no = p_order_no and item_key = p_item_key;
+
+  if p_action = 'no_code' then
+    if found and r.state = 'no_code' then return 'unchanged'; end if;
+    if found and r.state = 'paid' then return 'unchanged'; end if; -- never downgrade a paid item on a parse miss
+    insert into private.imweb_order_items(order_no, item_key, pay_code, state) values (p_order_no, p_item_key, null, 'no_code')
+    on conflict (order_no, item_key) do update set state = 'no_code', updated_at = now();
+    return 'no_code';
+  end if;
+
+  if p_action = 'paid' then
+    if v_code is null then return 'bad_input'; end if;
+    if found and r.state = 'paid' and r.pay_code = v_code then return 'unchanged'; end if;
+    if found and r.state = 'unknown_code' and r.pay_code = v_code then return 'unchanged'; end if;
+    begin
+      perform private.set_couple_paid(v_code, true, 'imweb', p_order_no::text);
+    exception when sqlstate 'P0002' then
+      insert into private.imweb_order_items(order_no, item_key, pay_code, state) values (p_order_no, p_item_key, v_code, 'unknown_code')
+      on conflict (order_no, item_key) do update set pay_code = excluded.pay_code, state = 'unknown_code', updated_at = now();
+      return 'unknown_code';
+    end;
+    insert into private.imweb_order_items(order_no, item_key, pay_code, state) values (p_order_no, p_item_key, v_code, 'paid')
+    on conflict (order_no, item_key) do update set pay_code = excluded.pay_code, state = 'paid', updated_at = now();
+    return 'unlocked';
+  end if;
+
+  -- revoke
+  if found and r.state = 'revoked' then return 'unchanged'; end if;
+  if not found or r.state <> 'paid' then
+    insert into private.imweb_order_items(order_no, item_key, pay_code, state) values (p_order_no, p_item_key, coalesce(r.pay_code, v_code), 'revoked')
+    on conflict (order_no, item_key) do update set state = 'revoked', updated_at = now();
+    return 'recorded';
+  end if;
+  v_code := r.pay_code; -- the code this item unlocked
+  update private.imweb_order_items set state = 'revoked', updated_at = now() where order_no = p_order_no and item_key = p_item_key;
+  select * into e from private.couple_entitlements where pay_code = v_code for update;
+  if not found then return 'revoked'; end if; -- couple deleted meanwhile
+  -- only touch the entitlement if an 아임웹 order is what holds it open (a later manual/other-provider unlock is left alone)
+  if e.report_paid and e.paid_source is distinct from 'imweb' then return 'recorded'; end if;
+  select order_no into v_other from private.imweb_order_items
+    where pay_code = v_code and state = 'paid' order by first_seen_at limit 1;
+  if v_other is not null then
+    perform private.set_couple_paid(v_code, true, 'imweb', v_other::text);
+    return 'repointed';
+  end if;
+  perform private.set_couple_paid(v_code, false);
+  return 'revoked';
+end $$;
+
+-- Release the lease and record a short status code (no buyer data).
+create or replace function public.imweb_poll_finish(p_lease uuid, p_status text)
+returns boolean language plpgsql volatile security definer set search_path = private, pg_temp as $$
+declare v_status text := case when p_status ~ '^[a-z_]{1,40}$' then p_status else 'invalid_status' end;
+begin
+  update private.imweb_oauth set lease_id = null, lease_until = null, last_status = v_status,
+    last_ok_at = case when v_status = 'ok' then now() else last_ok_at end, updated_at = now()
+  where id and lease_id = p_lease;
+  return found;
+end $$;
+
+revoke all on function public.imweb_poll_lease(integer), public.imweb_poll_save_tokens(uuid, text, text, text),
+  public.imweb_poll_apply(uuid, bigint, text, text, text), public.imweb_poll_finish(uuid, text)
+  from public, anon, authenticated;
+grant execute on function public.imweb_poll_lease(integer), public.imweb_poll_save_tokens(uuid, text, text, text),
+  public.imweb_poll_apply(uuid, bigint, text, text, text), public.imweb_poll_finish(uuid, text)
+  to service_role;
+
+commit;
+
+-- Owner checks (SQL editor, as postgres):
+--   select last_run_at, last_ok_at, last_status, token_updated_at from private.imweb_oauth;
+--   select order_no, state, updated_at from private.imweb_order_items order by updated_at desc limit 20;
