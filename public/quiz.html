@@ -72,6 +72,7 @@
         shareToken: '', // the quiz token this author created (to share)
         result: null, // { score, a_name, b_name, challenge }
         myChallenge: null, // challenge I sent: { token, status, ... }
+        isMaker: false, // this device created the quiz in the #q= link
         busy: false
       };
 
@@ -164,6 +165,19 @@
         const code = ch.charCodeAt(0);
         if (code < 0xAC00 || code > 0xD7A3) return '가';
         return ((code - 0xAC00) % 28) ? '이' : '가';
+      }
+
+      // 이 기기에서 만든 퀴즈 토큰 (서버 변경 없이 만든 사람을 구분). 저장 실패해도 동작은 그대로.
+      const MADE_KEY = 'urisai_quiz_made';
+      function madeTokens() {
+        try { const v = JSON.parse(localStorage.getItem(MADE_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (_e) { return []; }
+      }
+      function rememberMade(token) {
+        try {
+          const list = madeTokens().filter((t) => t !== token);
+          list.push(token);
+          localStorage.setItem(MADE_KEY, JSON.stringify(list.slice(-20)));
+        } catch (_e) {}
       }
 
       // ---------- layout ----------
@@ -266,6 +280,7 @@
             const r = await rpc('create_quiz', { p_a_name: S.aName, p_b_name: S.bName, p_answers: S.answers, p_challenge_token: S.challengeToken || null });
             S.shareToken = r.token;
             S.aName = r.a_name; S.bName = r.b_name;
+            rememberMade(r.token);
           }
           await shareText(S.aName + subjectParticle(S.aName) + ' 문제 냈어. 나에 대해 몇 개나 맞힐 수 있어? 👀', baseUrl() + '#q=' + S.shareToken);
           go('send');
@@ -336,14 +351,24 @@
         }
 
         const actions = h('div', 'space-y-2.5 pt-1');
-        actions.appendChild(btn('스토리에 올리기', PRIMARY, shareStory));
-        actions.appendChild(btn('친구 커플에게 도전장 보내기', OUTLINE, sendChallenge));
+        if (S.isMaker) {
+          actions.appendChild(btn('친구 커플에게 도전장 보내기', PRIMARY, sendChallenge));
+        } else {
+          actions.appendChild(btn(r.a_name + '님에게 점수 보내기', PRIMARY, sendScore));
+          actions.appendChild(btn('스토리에 올리기', OUTLINE, shareStory));
+          actions.appendChild(btn('친구 커플에게 도전장 보내기', OUTLINE, sendChallenge));
+        }
         actions.appendChild(btn('우리사이에서 매일 이어하기', GHOST, () => {
           logEvent('quiz_kakao_start');
           setTimeout(() => { location.href = './'; }, 150);
         }));
         blocks.push(actions);
         shell(blocks);
+      }
+
+      async function sendScore() {
+        const r = S.result;
+        await shareText(r.b_name + subjectParticle(r.b_name) + ' ' + TOTAL + '문제 중 ' + r.score + '개 맞혔어 👀', baseUrl() + '#q=' + S.quizToken);
       }
 
       async function sendChallenge() {
@@ -484,6 +509,7 @@
             S.quizToken = q;
             const r = await rpc('get_quiz_for_guess', { p_token: q });
             S.aName = r.a_name; S.bName = r.b_name;
+            S.isMaker = madeTokens().indexOf(q) >= 0;
             if (r.status === 'done') {
               S.result = { a_name: r.a_name, b_name: r.b_name, score: r.score, challenge: r.challenge };
               if (r.my_challenge_token) {
@@ -491,6 +517,9 @@
                 pollChallenge(0);
               }
               go('score');
+            } else if (S.isMaker) {
+              S.shareToken = q; // 만든 사람이 자기 링크를 열면 대신 풀지 않게 보내기 화면으로
+              go('send');
             } else {
               go('landing');
             }
