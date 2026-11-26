@@ -5,14 +5,13 @@
 -- What is stored: one row per (couple, user, round): 10 answers, each 0/1/2 (option index). Nothing else.
 --
 -- Security model
--- * public.forecast_answers: RLS on. anon/PUBLIC: no privileges. authenticated: SELECT only (no INSERT/UPDATE/DELETE).
---   Policy: a couple member sees their own rows, and sees the partner's row of a round only after they answered that
---   round themselves (public.forecast_answered: SECURITY DEFINER, pinned search_path, authenticated only, answers only
---   "did I answer this round" for the caller; it avoids a self-referencing policy).
+-- * public.forecast_answers: RLS on, no policies, nothing granted to anon/authenticated/PUBLIC (no direct SELECT either).
 -- * Writes only through public.submit_forecast(int, smallint[]): SECURITY DEFINER, search_path pinned (public, pg_temp),
 --   authenticated only. The couple and user come from auth.uid(), so nobody can answer for someone else or another couple.
 --   One answer per user per round (a repeat call changes nothing).
--- * public.my_forecast(int): the caller's couple only. Returns the partner's answers only when both answered.
+-- * public.my_forecast(int): the caller's couple only, and only the rows of its CURRENT two members (couples.user_a/user_b):
+--   rows of a former partner under the same couple code are never returned or counted. Returns the partner's answers
+--   only when both answered. Bad round (null / outside 1..1000) -> 'bad_round', same as submit_forecast.
 --   Signals for the result: couples.warmth_temp, accepted daily_missions and private.gratitude_sends counts in the 14 KST
 --   days ending at the later answer. Counts only. Nothing here reads public.secret_emotions or any 비밀방 table.
 -- * No dynamic SQL. No Gemini call. The weather/lines are computed in the app from these values (fixed rules).
@@ -30,24 +29,12 @@ create table if not exists public.forecast_answers (
   primary key (couple_code, user_id, round)
 );
 alter table public.forecast_answers enable row level security;
+-- No direct table access for the API roles: no policies, no grants. Reads/writes go through the two RPCs below.
 revoke all on table public.forecast_answers from public, anon, authenticated;
-grant select on table public.forecast_answers to authenticated;
 grant all on table public.forecast_answers to service_role;
-
--- Did the caller answer this round of this couple? (used by the policy)
-create or replace function public.forecast_answered(p_code text, p_round integer)
-returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select auth.uid() is not null and exists (
-    select 1 from public.forecast_answers f
-     where f.couple_code = p_code and f.round = p_round and f.user_id = auth.uid());
-$$;
-revoke all on function public.forecast_answered(text, integer) from public, anon, authenticated;
-grant execute on function public.forecast_answered(text, integer) to authenticated;
-
+-- (an earlier draft of this file had a select policy + helper; remove them if present)
 drop policy if exists "forecast_member_select" on public.forecast_answers;
-create policy "forecast_member_select" on public.forecast_answers for select to authenticated
-  using (public.is_couple_member(couple_code)
-         and (user_id = auth.uid() or public.forecast_answered(couple_code, round)));
+drop function if exists public.forecast_answered(text, integer);
 
 create or replace function public.my_forecast(p_round integer default 1)
 returns jsonb
@@ -71,6 +58,7 @@ begin
   if v_uid is null then raise exception 'not_authenticated' using errcode = '28000'; end if;
   select * into c from public.couples where user_a = v_uid or user_b = v_uid order by created_at limit 1;
   if not found then raise exception 'couple_not_found' using errcode = 'P0002'; end if;
+  if p_round is null or p_round not between 1 and 1000 then raise exception 'bad_round' using errcode = '22023'; end if;
   v_role := case when c.user_a = v_uid then 'A' else 'B' end;
   v_partner := case when v_role = 'A' then c.user_b else c.user_a end;
   select * into mine from public.forecast_answers where couple_code = c.code and user_id = v_uid and round = p_round;

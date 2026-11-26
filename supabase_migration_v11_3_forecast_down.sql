@@ -2,7 +2,7 @@
 begin;
 drop function if exists public.submit_forecast(integer, smallint[]);
 drop function if exists public.my_forecast(integer);
-drop table if exists public.forecast_answers;  -- drops its policy too
+drop table if exists public.forecast_answers;
 drop function if exists public.forecast_answered(text, integer);
 commit;
 notify pgrst, 'reload schema';

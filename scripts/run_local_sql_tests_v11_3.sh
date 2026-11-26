@@ -18,7 +18,7 @@ UP=supabase_migration_v11_3_forecast.sql; DOWN=supabase_migration_v11_3_forecast
 a $UP "v11.3 up"; a $UP "v11.3 up again"; t scripts/test_v11_3.sql; t scripts/test_v10_4.sql; t scripts/test_v11_2.sql
 a $DOWN "v11.3 down"; a $DOWN "v11.3 down again"
 r=$($P -d $DB -tAc "select count(*) from pg_class where relname = 'forecast_answers'")+$($P -d $DB -tAc "select count(*) from pg_proc where proname in ('my_forecast','submit_forecast','forecast_answered')")
-if [ "$r" = "0+0" ]; then echo "  PASS down: table + 3 functions gone"; PASSES=$((PASSES + 1)); else echo "  FAIL down left objects ($r)"; FAILS=$((FAILS + 1)); fi
+if [ "$r" = "0+0" ]; then echo "  PASS down: table + functions gone"; PASSES=$((PASSES + 1)); else echo "  FAIL down left objects ($r)"; FAILS=$((FAILS + 1)); fi
 t scripts/test_v10_4.sql; t scripts/test_v11_2.sql
 a $UP "v11.3 up after down"; t scripts/test_v11_3.sql
 $P -d postgres -c "drop database if exists $DB" >/dev/null && echo "dropped $DB"
