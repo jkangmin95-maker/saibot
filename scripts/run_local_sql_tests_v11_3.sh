@@ -1,5 +1,5 @@
 #!/bin/bash
-# Throwaway local Postgres check for v11.3 (우리 사이 예보): base -> ... -> v11.2 -> v11.3 up, up again, test,
+# Throwaway local Postgres check for v11.3 (우리사이 온도): base -> ... -> v11.2 -> v11.3 up, up again, test,
 # down (objects gone, v10.4 + v11.2 tests still pass), up again, test. Never point it at Supabase.
 # Local: PGHOST=localhost PGPORT=55432 PGUSER=postgres bash scripts/run_local_sql_tests_v11_3.sh
 set -u
@@ -14,10 +14,10 @@ done
 FAILS=0; PASSES=0
 t() { local o; o=$($P -d $DB -f "$1" 2>&1 | grep -oE "(PASS|FAIL) .*|ERROR.*"); echo "$o" | grep -E "^(FAIL|ERROR)"; local p f; p=$(echo "$o" | grep -c ^PASS); f=$(echo "$o" | grep -cE "^(FAIL|ERROR)"); echo "  $(basename $1 .sql) -> PASS=$p FAIL=$f"; FAILS=$((FAILS + f)); PASSES=$((PASSES + p)); }
 a() { $P -d $DB -v ON_ERROR_STOP=1 -f "$1" >/dev/null 2>/tmp/v113.err && echo "$2 ok" || { echo "$2 FAILED"; cat /tmp/v113.err; FAILS=$((FAILS + 1)); }; }
-UP=supabase_migration_v11_3_forecast.sql; DOWN=supabase_migration_v11_3_forecast_down.sql
+UP=supabase_migration_v11_3_temp.sql; DOWN=supabase_migration_v11_3_temp_down.sql
 a $UP "v11.3 up"; a $UP "v11.3 up again"; t scripts/test_v11_3.sql; t scripts/test_v10_4.sql; t scripts/test_v11_2.sql
 a $DOWN "v11.3 down"; a $DOWN "v11.3 down again"
-r=$($P -d $DB -tAc "select count(*) from pg_class where relname = 'forecast_answers'")+$($P -d $DB -tAc "select count(*) from pg_proc where proname in ('my_forecast','submit_forecast','forecast_answered')")
+r=$($P -d $DB -tAc "select count(*) from pg_class where relname in ('forecast_answers','temp_answers','temp_measurements','temp_config','self_missions')")+$($P -d $DB -tAc "select count(*) from pg_proc where proname in ('my_forecast','submit_forecast','forecast_answered','my_temp','submit_temp','create_self_mission','my_self_missions','accept_self_mission','temp_areas_json','self_mission_json')")
 if [ "$r" = "0+0" ]; then echo "  PASS down: table + functions gone"; PASSES=$((PASSES + 1)); else echo "  FAIL down left objects ($r)"; FAILS=$((FAILS + 1)); fi
 t scripts/test_v10_4.sql; t scripts/test_v11_2.sql
 a $UP "v11.3 up after down"; t scripts/test_v11_3.sql
